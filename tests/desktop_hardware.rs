@@ -60,6 +60,7 @@ struct Wire {
     fail: bool,
     offline_during_settings: bool,
     suppress_status: bool,
+    status_gains: Option<(u8, u8)>,
 }
 struct TestTransport(Arc<Mutex<Wire>>);
 impl Drop for TestTransport {
@@ -72,7 +73,10 @@ impl Transport for TestTransport {
         let mut w = self.0.lock().unwrap();
         w.writes.push(data.to_vec());
         match data[1] {
-            0xb0 if !w.suppress_status => w.reports.push_back(vec![0xb0, 3, 73, 3, 100, 100]),
+            0xb0 if !w.suppress_status => {
+                let (game, chat) = w.status_gains.unwrap_or((100, 100));
+                w.reports.push_back(vec![0xb0, 3, 73, 3, game, chat]);
+            }
             0x39 => w.sidetone = data[2],
             0x20 => {
                 if w.offline_during_settings {
@@ -93,6 +97,9 @@ impl Transport for TestTransport {
                 return Err(steelseries_gg::Error::DeviceCommunication("injected unplug".into()));
             }
             if let Some(report) = w.reports.pop_front() {
+                if report.len() >= 3 && report[0] == 0x45 {
+                    w.status_gains = Some((report[1], report[2]));
+                }
                 data[..report.len()].copy_from_slice(&report);
                 return Ok(report.len());
             }
@@ -167,6 +174,46 @@ fn backend() -> MemoryBackend {
         fail_after_write: false,
     }
 }
+#[test]
+fn status_only_receiver_updates_physical_mix_without_unsolicited_reports() {
+    let dir = tempfile::tempdir().unwrap();
+    let wire = Arc::new(Mutex::new(Wire::default()));
+    let mut s = Service::with_hardware(backend(), dir.path().join("state.json"), controller(wire.clone())).unwrap();
+    call(&mut s, "stream.set", json!({"id":1,"group":"game"}));
+    call(&mut s, "stream.set", json!({"id":2,"group":"chat"}));
+    call(&mut s, "device.set", json!({"id":ID,"hardwareEnabled":true}));
+    settle(&mut s, |v| v["physical"]["connected"] == true);
+    call(&mut s, "chatmix.set", json!({"inputMode":"hardware","enabled":true}));
+    // Real Gen 2 capture supplied new gains only in replies to status queries.
+    // No 0x45 event is injected; a slow battery-only poll misses wheel motion.
+    wire.lock().unwrap().status_gains = Some((0, 100));
+    let state = settle(&mut s, |v| v["physical"]["sample"]["gamePercent"] == 0);
+    assert_eq!(state["streams"][0]["effectiveVolume"], 0.0);
+    assert_eq!(state["streams"][1]["effectiveVolume"], 0.8);
+    wire.lock().unwrap().status_gains = Some((100, 100));
+    settle(&mut s, |v| v["streams"][0]["effectiveVolume"] == 0.8);
+}
+
+#[test]
+fn unchanged_status_polls_do_not_rewrite_saved_mix() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    let wire = Arc::new(Mutex::new(Wire::default()));
+    let mut s = Service::with_hardware(backend(), path.clone(), controller(wire)).unwrap();
+    call(&mut s, "stream.set", json!({"id":1,"group":"game"}));
+    call(&mut s, "device.set", json!({"id":ID,"hardwareEnabled":true}));
+    settle(&mut s, |v| v["physical"]["connected"] == true);
+    call(&mut s, "chatmix.set", json!({"inputMode":"hardware","enabled":true}));
+    s.tick().unwrap();
+    let saved_at = std::fs::metadata(&path).unwrap().modified().unwrap();
+    let deadline = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+        s.tick().unwrap();
+    }
+    assert_eq!(std::fs::metadata(path).unwrap().modified().unwrap(), saved_at);
+}
+
 #[test]
 fn injected_protocol_wheel_drives_two_independent_gains_without_compounding() {
     let dir = tempfile::tempdir().unwrap();

@@ -329,7 +329,8 @@ impl<B: Backend> Service<B> {
     }
     fn sync_hardware(&mut self) {
         let physical = self.hardware.snapshot();
-        if physical.sample != self.physical.sample {
+        let gains = |sample: Option<hardware::Sample>| sample.map(|s| (s.game_percent, s.chat_percent));
+        if gains(physical.sample) != gains(self.physical.sample) {
             self.hardware_dirty = true;
         }
         if physical.sample.is_none() && self.mixer.input_mode == hardware::InputMode::Hardware {

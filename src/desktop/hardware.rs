@@ -16,6 +16,10 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+// Local Gen 2 captures reported wheel positions only in status replies, not
+// unsolicited events. Keep that fallback interactive while hardware is opted in.
+const STATUS_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum InputMode {
@@ -211,7 +215,7 @@ impl Controller {
                 let status = device.request_status().map_err(|e| e.to_string())?;
                 accept(&shared, Report::Status(status))?;
                 complete(&shared);
-                let mut next_status = Instant::now() + Duration::from_secs(10);
+                let mut next_status = Instant::now() + STATUS_POLL_INTERVAL;
                 while !cancelled.load(Ordering::Acquire) {
                     if let Ok(command) = rx.try_recv() {
                         if cancelled.load(Ordering::Acquire) {
@@ -245,13 +249,13 @@ impl Controller {
                         )?;
                         shared.lock().state.last_command = Some("completed".into());
                         complete(&shared);
-                        next_status = Instant::now() + Duration::from_secs(10);
+                        next_status = Instant::now() + STATUS_POLL_INTERVAL;
                     } else if Instant::now() >= next_status {
                         accept(
                             &shared,
                             Report::Status(device.request_status().map_err(|e| e.to_string())?),
                         )?;
-                        next_status = Instant::now() + Duration::from_secs(10);
+                        next_status = Instant::now() + STATUS_POLL_INTERVAL;
                     } else if let Some(report) = device.read_event(50).map_err(|e| e.to_string())? {
                         accept(&shared, report)?;
                     }
