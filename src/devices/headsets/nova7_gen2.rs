@@ -285,6 +285,12 @@ impl<T: Transport> Nova7Gen2<T> {
     /// Query settings; asynchronous status/wheel packets are decoded, not confused
     /// with the requested settings response. Returns raw level 0..=3.
     pub fn sidetone_level(&mut self) -> Result<u8> {
+        self.sidetone_level_observed(|_| Ok(()))
+    }
+
+    /// Preserve interleaved power/wheel events for a single-owner service.
+    /// The observer can abort on disconnect before any subsequent setting write.
+    pub fn sidetone_level_observed(&mut self, mut observe: impl FnMut(Report) -> Result<()>) -> Result<u8> {
         self.send_command(Nova7Gen2Command::AudioSettings)?;
         let deadline = Instant::now() + Duration::from_millis(1000);
         for _ in 0..16 {
@@ -295,7 +301,7 @@ impl<T: Transport> Nova7Gen2<T> {
             match self.read_event(remaining.as_millis().clamp(1, 1000) as i32)? {
                 Some(Report::Sidetone(level)) => return Ok(level),
                 None => break,
-                _ => {}
+                Some(report) => observe(report)?,
             }
         }
         Err(protocol_error("timed out waiting for sidetone settings"))

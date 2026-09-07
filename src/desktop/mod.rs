@@ -1,5 +1,6 @@
 //! Desktop-only audio policy. Construction and inventory are strictly read-only.
 pub mod devices;
+pub mod hardware;
 pub mod pulse;
 pub mod rpc;
 use serde::{Deserialize, Serialize};
@@ -54,9 +55,12 @@ pub struct Group {
     pub wheel_side: String,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Mixer {
     pub balance: f64,
     pub enabled: bool,
+    #[serde(default)]
+    pub input_mode: hardware::InputMode,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -164,6 +168,9 @@ pub struct Service<B: Backend> {
     groups: Vec<Group>,
     mixer: Mixer,
     settings: Settings,
+    physical: hardware::Physical,
+    hardware: hardware::Controller,
+    hardware_dirty: bool,
     assignments: std::collections::BTreeMap<String, Assignment>,
     path: PathBuf,
     profiles: std::collections::BTreeMap<String, Profile>,
@@ -174,6 +181,9 @@ pub struct Service<B: Backend> {
 }
 impl<B: Backend> Service<B> {
     pub fn new(backend: B, path: PathBuf) -> Result<Self, String> {
+        Self::with_hardware(backend, path, hardware::Controller::default())
+    }
+    pub fn with_hardware(backend: B, path: PathBuf, hardware: hardware::Controller) -> Result<Self, String> {
         use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
         let parent = path.parent().ok_or("config path has no parent")?;
         std::fs::DirBuilder::new()
@@ -207,6 +217,9 @@ impl<B: Backend> Service<B> {
             groups: groups(),
             mixer: Mixer::default(),
             settings: Settings::default(),
+            physical: hardware::Physical::default(),
+            hardware,
+            hardware_dirty: false,
             assignments: Default::default(),
             applied: Default::default(),
             path,
@@ -233,7 +246,17 @@ impl<B: Backend> Service<B> {
     /// Reconcile restarted opted-in apps. Never arms itself on service startup.
     pub fn tick(&mut self) -> Result<(), String> {
         self.backend.begin_cycle();
+        self.sync_hardware();
         self.refresh().map_err(|e| e.message)?;
+        if self.hardware_dirty
+            && self.mixer.enabled
+            && self.mixer.input_mode == hardware::InputMode::Hardware
+            && !self.read_only
+        {
+            self.apply(None).map_err(|e| e.message)?;
+            self.persist().map_err(|e| e.message)?;
+            self.hardware_dirty = false;
+        }
         if !self.armed {
             return Ok(());
         }
@@ -297,9 +320,27 @@ impl<B: Backend> Service<B> {
     }
     pub fn set_read_only(&mut self, value: bool) {
         self.read_only = value;
+        if value {
+            self.hardware.stop();
+            self.armed = false;
+            self.mixer.enabled = false;
+            self.sync_hardware();
+        }
+    }
+    fn sync_hardware(&mut self) {
+        let physical = self.hardware.snapshot();
+        if physical.sample != self.physical.sample {
+            self.hardware_dirty = true;
+        }
+        if physical.sample.is_none() && self.mixer.input_mode == hardware::InputMode::Hardware {
+            self.mixer.enabled = false;
+            self.armed = false;
+        }
+        self.physical = physical;
     }
     pub fn request(&mut self, request: Value) -> Value {
         self.backend.begin_cycle();
+        self.sync_hardware();
         let id = request.get("id").cloned().unwrap_or(Value::Null);
         let result = match request["method"].as_str() {
             Some(method) => self.dispatch(method, request.get("params").cloned().unwrap_or(json!({}))),
@@ -390,6 +431,12 @@ impl<B: Backend> Service<B> {
         };
         let wheel = if !self.mixer.enabled {
             1.0
+        } else if self.mixer.input_mode == hardware::InputMode::Hardware {
+            match (g.wheel_side.as_str(), self.physical.sample) {
+                ("a", Some(s)) => f64::from(s.game_percent) / 100.0,
+                ("b", Some(s)) => f64::from(s.chat_percent) / 100.0,
+                _ => 1.0,
+            }
         } else {
             match g.wheel_side.as_str() {
                 "a" => 1.0 - self.mixer.balance.max(0.0),
@@ -458,10 +505,10 @@ impl<B: Backend> Service<B> {
     fn state(&mut self) -> Value {
         let error = self.refresh().err().map(|e| e.message);
         let (devices, device_error) = match devices::inventory() {
-            Ok(d) => (d, None),
+            Ok(d) => (devices::with_physical(d, &self.physical), None),
             Err(e) => (Vec::new(), Some(e.to_string())),
         };
-        json!({"streams":self.snapshot.streams,"sinks":self.snapshot.sinks,"groups":self.groups,"mixer":self.mixer,"settings":self.settings,"profiles":self.profile_names(),"devices":devices,"deviceError":device_error,"backend":{"name":"PulseAudio / PipeWire-Pulse","connected":error.is_none(),"error":error}})
+        json!({"streams":self.snapshot.streams,"sinks":self.snapshot.sinks,"groups":self.groups,"mixer":self.mixer,"physical":self.physical,"settings":self.settings,"profiles":self.profile_names(),"devices":devices,"deviceError":device_error,"backend":{"name":"PulseAudio / PipeWire-Pulse","connected":error.is_none(),"error":error}})
     }
     fn dispatch(&mut self, method: &str, params: Value) -> Result<Value, RpcError> {
         if self.read_only
@@ -564,14 +611,26 @@ impl<B: Backend> Service<B> {
             }
             "chatmix.set" => {
                 #[derive(Deserialize)]
-                #[serde(deny_unknown_fields)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
                 struct P {
                     balance: Option<f64>,
                     enabled: Option<bool>,
+                    input_mode: Option<hardware::InputMode>,
                 }
                 let p: P = decode(params)?;
                 gain(p.balance, -1.0)?;
+                let mode = p.input_mode.unwrap_or(self.mixer.input_mode);
+                if mode == hardware::InputMode::Hardware
+                    && p.enabled.unwrap_or(self.mixer.enabled)
+                    && self.physical.sample.is_none()
+                {
+                    return Err(RpcError::new(
+                        "HARDWARE_UNAVAILABLE",
+                        "Acquire hardware and wait for a fresh connected sample first",
+                    ));
+                }
                 self.refresh()?;
+                self.mixer.input_mode = mode;
                 if let Some(v) = p.balance {
                     self.mixer.balance = v;
                 }
@@ -583,12 +642,55 @@ impl<B: Backend> Service<B> {
                 Ok(self.state())
             }
             "devices.list" => devices::inventory()
-                .map(|d| json!(d))
+                .map(|d| json!(devices::with_physical(d, &self.physical)))
                 .map_err(|e| RpcError::new("IO_ERROR", e.to_string())),
-            "device.set" => Err(RpcError::new(
-                "UNSUPPORTED",
-                "Hardware control is not integrated; no HID command was sent",
-            )),
+            "device.set" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                struct P {
+                    id: String,
+                    hardware_enabled: Option<bool>,
+                    sidetone: Option<u8>,
+                    auto_off_minutes: Option<u8>,
+                    status_refresh: Option<bool>,
+                }
+                let p: P = decode(params)?;
+                let command = hardware::SettingsCommand {
+                    sidetone: p.sidetone,
+                    auto_off_minutes: p.auto_off_minutes,
+                    status_refresh: p.status_refresh.unwrap_or(false),
+                };
+                if p.sidetone.is_some_and(|v| v > 3) || (p.hardware_enabled == Some(false) && !command.is_empty()) {
+                    return Err(RpcError::invalid(
+                        "Sidetone must be 0..3; release cannot be combined with commands",
+                    ));
+                }
+                if !p.id.starts_with("1038:227e:") {
+                    return Err(RpcError::new("UNSUPPORTED", "Unverified model; no commands sent"));
+                }
+                if p.hardware_enabled != Some(true) && self.physical.device_id.as_deref() != Some(&p.id) {
+                    return Err(RpcError::new(
+                        "HARDWARE_UNAVAILABLE",
+                        "Acquire this receiver explicitly first",
+                    ));
+                }
+                match p.hardware_enabled {
+                    Some(true) => self
+                        .hardware
+                        .enable(&p.id)
+                        .map_err(|e| RpcError::new("HARDWARE_UNAVAILABLE", e))?,
+                    Some(false) => self.hardware.stop(),
+                    None if command.is_empty() => return Err(RpcError::invalid("No hardware operation requested")),
+                    None => {}
+                }
+                if !command.is_empty() {
+                    self.hardware
+                        .queue(&p.id, command)
+                        .map_err(|e| RpcError::new("HARDWARE_UNAVAILABLE", e))?;
+                }
+                self.sync_hardware();
+                Ok(self.state())
+            }
             "streams.list" => {
                 self.refresh()?;
                 Ok(json!(self.snapshot.streams))
@@ -634,6 +736,15 @@ impl<B: Backend> Service<B> {
                         .get(&p.name)
                         .ok_or_else(|| RpcError::new("NOT_FOUND", "unknown profile"))?
                         .clone();
+                    if profile.mixer.input_mode == hardware::InputMode::Hardware
+                        && profile.mixer.enabled
+                        && self.physical.sample.is_none()
+                    {
+                        return Err(RpcError::new(
+                            "HARDWARE_UNAVAILABLE",
+                            "Acquire a fresh connected receiver before applying an enabled hardware profile",
+                        ));
+                    }
                     self.refresh()?;
                     self.groups = profile.groups;
                     self.mixer = profile.mixer;

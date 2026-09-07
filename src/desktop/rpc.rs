@@ -80,13 +80,13 @@ impl Client {
 pub fn worker<B: Backend + Send + 'static>(mut service: Service<B>) -> (Client, thread::JoinHandle<()>) {
     let (tx, rx) = mpsc::sync_channel::<Request>(16);
     let join = thread::spawn(move || {
-        let mut next_tick = Instant::now() + Duration::from_secs(1);
+        let mut next_tick = Instant::now() + Duration::from_millis(200);
         loop {
             if Instant::now() >= next_tick {
                 if let Err(e) = service.tick() {
                     eprintln!("desktop audio unavailable: {e}");
                 }
-                next_tick = Instant::now() + Duration::from_secs(1);
+                next_tick = Instant::now() + Duration::from_millis(200);
             }
             match rx.recv_timeout(next_tick.saturating_duration_since(Instant::now())) {
                 Ok(request) => {

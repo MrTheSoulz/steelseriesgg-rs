@@ -52,7 +52,8 @@
       ],
       "mixer": {
         "balance": 0.0,
-        "enabled": false
+        "enabled": false,
+        "inputMode": "software"
       },
       "settings": {
         "startMinimized": false,
@@ -92,8 +93,9 @@
   },
   "chatmix.set": {
     "params": {
-      "balance": "optional number -1..1; positive favors b/chat",
-      "enabled": "optional boolean"
+      "balance": "optional software balance -1..1; positive favors b/chat; physical gains come from physical.sample, never scalar inversion",
+      "enabled": "optional boolean; hardware mode requires an acquired fresh connected sample",
+      "inputMode": "optional software|hardware; never starts hardware acquisition"
     },
     "result": "full state"
   },
@@ -146,20 +148,33 @@
         "hardwareAcquired": false,
         "capabilities": {
           "battery": {
-            "supported": false,
-            "reason": "Hardware acquisition not enabled"
+            "supported": true,
+            "locallyValidated": false,
+            "reason": "Source-supported dedicated protocol; local hardware validation pending. Explicit acquisition required"
           },
           "physicalChatmix": {
-            "supported": false,
-            "reason": "Hardware acquisition not enabled"
+            "supported": true,
+            "locallyValidated": false,
+            "reason": "Source-supported dedicated protocol; local hardware validation pending. Explicit acquisition required"
           }
         }
       }
     ]
   },
   "device.set": {
-    "params": {},
-    "result": "explicit UNSUPPORTED until hardware integration"
+    "params": {
+      "id": "exact devices.list id; only dedicated 1038:227e interface3/ffc0:1 supported",
+      "hardwareEnabled": "optional bool: true explicitly acquires and queries status; false cancels/releases. Never persisted or auto-reconnected",
+      "sidetone": "optional integer 0..3, requires opt-in; verified by settings readback",
+      "autoOffMinutes": "optional integer 0..255, requires opt-in; sent only, no supported readback",
+      "statusRefresh": "optional bool: true queues documented status query after opt-in"
+    },
+    "result": "full state with physical; asynchronous acceptance, inspect physical.pending/error/lastCommand for completion. All parameters validated before enqueue/open; no device settings persisted. Disable cannot be combined with writes."
+  },
+  "physical": {
+    "location": "state.get.result.physical; selected devices entry also has physical",
+    "fields": "deviceId, hardwareEnabled, hardwareAcquired, connected (wireless tri-state), battery, charging, sample {gamePercent,chatPercent,balance,receivedAtMs}|null, statusAtMs|null, stale, pending, sidetone|null, autoOffMinutesSent|null, lastCommand|null, error|null",
+    "policy": "Unknown/stale sample is null, never synthetic center. Runtime explicit opt-in only; status heartbeat every 10s, freshness deadline 15s. Wireless offline/unknown, read/query error or stale status stops owner and disarms hardware mixing without restoring gains or rerouting speakers. Reacquire with hardwareEnabled:true then explicitly enable mixer again. hardwareEnabled acquisition alone never enables mixer."
   },
   "errors": [
     "INVALID_REQUEST",
@@ -168,19 +183,23 @@
     "BACKEND_UNAVAILABLE",
     "UNSUPPORTED",
     "IO_ERROR",
-    "BUSY"
+    "BUSY",
+    "HARDWARE_UNAVAILABLE"
   ],
-  "safety": "No opening/reading/config-loading audio mutations. Default mixer disabled every process start. User mutation arms session reapply for restarted assigned apps; group wheelSide none and unmanaged excluded. Config isolated in $XDG_CONFIG_HOME/ssgg-desktop/state.json. No capture/microphone/HID operations. pactl required at runtime.",
+  "safety": "No construction/inventory/config-loading audio or HID mutations. Default mixer disabled and hardware unacquired every process start. User mutation arms session reapply for restarted assigned apps; group wheelSide none and unmanaged excluded from physical attenuation. Config isolated in $XDG_CONFIG_HOME/ssgg-desktop/state.json. No capture/microphone operations. HID queries/settings only after device.set hardwareEnabled:true; --safe-mode refuses acquisition and all audio/HID writes. pactl required at runtime.",
   "notes": [
     "IDs are u32 numbers at RPC boundary (not renderer display strings).",
     "state.get keys are mixer/backend, not chatmix/audio.",
     "Stream volume/muted are base intent; effectiveVolume/effectiveMuted report actual Pulse state.",
     "Disconnect clears stale inventory and disarms reapply; user must reactivate after reconnect.",
     "Groups are logical per-app controls, not automatically created null buses.",
-    "Device inventory uses HID enumeration only; device.set explicitly UNSUPPORTED. Dedicated hardware module must be integrated separately; no hardware commit cherry-picked.",
+    "Device inventory is enumeration only. Only exact 1038:227e interface3/ffc0:1 is supported. Empty serial strings in enumerated IDs are preserved. Multiple Nova control receivers are refused to avoid ambiguous VID/PID driver selection.",
     "--safe-mode denies audio/HID mutation RPC, while settings/profiles.save remain usable.",
     "Unix daemon survives GUI disconnect; --stdio ends at stdin EOF. No automatic gain restoration on exit; saved per-stream gain tracking prevents compounding on service restart.",
     "Bounded: 64 KiB input line; 16 pending RPCs; 8 socket clients; 1s queue expiry; 3s per pactl command; 8s aggregate cycle; 4MiB command output; 30s socket idle timeout.",
-    "pactl executable resolved by SSGG_PACTL or PATH; desktop has no compile-time Pulse dependency and adds no dependencies."
+    "pactl executable resolved by SSGG_PACTL or PATH; desktop has no compile-time Pulse dependency and adds no dependencies.",
+    "HID owner uses 50ms passive reads, bounded 1s queries, 8 queued settings batches, latest-state mailbox rather than an unbounded event queue. Audio worker ticks every 200ms independent of GUI polling; backend operation time can increase latency. Cancel is nonblocking; pending batches are dropped, an already-running bounded query can finish. Shutdown joins and releases owner.",
+    "Settings validation is atomic before acquisition/enqueue, not a transactional HID write: a later failure cannot roll back prior commands. physical.sidetone is verified readback; autoOffMinutesSent means write success only. physical.lastCommand is queued|completed|failed; physical.pending reports outstanding acquisition/settings.",
+    "devices[].connected describes receiver enumeration, physical.connected is wireless headset tri-state. physical sample/status timestamps are Unix epoch milliseconds; freshness uses monotonic time. No automatic gain restoration or speaker reroute on headset/receiver loss."
   ]
 }
