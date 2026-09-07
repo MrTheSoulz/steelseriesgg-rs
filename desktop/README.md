@@ -1,34 +1,63 @@
 # SSGG desktop
 
-Local Electron 44 + React + TypeScript application. The renderer never talks to a network service, invokes a shell, reads arbitrary files, or imports test fixtures.
+Local Electron + React + TypeScript console. No renderer shell, arbitrary filesystem paths, network client or production fixture fallback.
 
-## Run
+## Build and launch locally
+
+Prerequisites: Linux, Node/npm, the repository's Rust toolchain and native build dependencies, a running PipeWire-Pulse or PulseAudio session, and **pactl** (`pulseaudio-utils` on Debian/Ubuntu; `libpulse` on Arch). Electron needs the usual GTK/NSS/GBM libraries and a working Chromium sandbox. `xvfb` is only needed for headless smoke tests.
 
 ```sh
 cd desktop
 npm ci --include=dev
-npm run build
-npm start
+npm run build:local
+npm run launch -- --read-only   # real inventory; no audio/HID changes
+npm run launch                 # normal controls, explicit opt-in hardware
 ```
 
-Build the Rust `ssgg-desktop` binary first. Development defaults to `../target/debug/ssgg-desktop`. A developer can explicitly set `SSGG_SIDECAR` to an **absolute, trusted, non-group/world-writable** binary. The application spawns it with `--stdio`; no HTTP listener is started. Packaged applications ignore this override and require `ssgg-desktop` in `process.resourcesPath` (alongside the application bundle). This directory currently supplies source/build outputs, not a Linux installer.
-
-Cargo outputs on group-writable development trees may have mode 775. The bridge refuses these. Install a copy into a private development artifact directory with mode 755 rather than weakening the check or changing someone else's build output:
+To reuse a trusted, already compiled Rust binary instead of running Cargo:
 
 ```sh
-install -m 755 /absolute/build/ssgg-desktop artifacts/ssgg-desktop
-SSGG_SIDECAR="$PWD/artifacts/ssgg-desktop" npm start
+npm run build:local -- /absolute/path/to/ssgg-desktop
 ```
 
-The backend may need `SSGG_PACTL` pointing to a trusted pactl installation; the main process inherits the launch environment. Production packaging must provision its native dependencies and sandbox correctly.
+The build stages a mode-755 binary under the private, ignored `local-bin/` directory, builds the UI/preload/main outputs, and renders `local-bin/ssgg-desktop-local.service`. No installed binaries, user configuration or services are changed. A source checkout's group-writable Cargo output is copied, not chmodded in place. These are runnable **local artifacts**, not a portable installer. The generated unit contains this checkout's absolute executable path; the portable template is `../assets/ssgg-desktop.service`.
+
+`npm start` remains a development shortcut using the default `../target/debug/ssgg-desktop` or an absolute `SSGG_SIDECAR` override. The bridge rejects group/world-writable executables. Packaged builds ignore the override and require a trusted binary in `process.resourcesPath`.
+
+## Independent service (optional)
+
+To keep mixing when the GUI quits, start the standalone Rust service **before** opening SSGG:
+
+```sh
+# In its own terminal; no installer or systemd changes:
+./local-bin/ssgg-desktop
+# Then, in another terminal:
+npm run launch
+```
+
+The daemon listens at `$XDG_RUNTIME_DIR/ssgg-desktop/service.sock`. Electron prefers this socket after checking owner, filesystem type, no symlinks at the runtime directory/service directory/socket, and private permissions (0700 directories, 0600 socket). Renderer IPC cannot select a socket or executable. There is no TCP listener started by production code.
+
+A connected external service is **never killed or reset on GUI quit**. A window-owned `--stdio` sidecar is used only when no socket is available, and is labelled accordingly. A failed/untrusted existing socket is an error, not permission to start a competing service. After a previously attached service disappears, refresh retries the socket without falling back to a competitor. Reopening a hidden window also resumes polling/reconnection. Config-lock conflicts show a specific recovery message.
+
+The optional systemd user-unit template is supplied, **not installed or enabled**. It uses a restrictive umask, runtime directory, no new privileges, and no automatic hardware acquisition. Do not run the legacy `ssgg` audio loop concurrently against the same devices/audio policies. Service startup itself only inventories; hardware and ChatMix require separate explicit activation.
+
+Assignments, group gains and profiles are persisted by Rust. Hardware ownership and mixer activation are session state and must be re-enabled after restart/disconnection. Loss/staleness disarms hardware mixing without restoring gains or rerouting audio. Closing a GUI is not the same as restarting a service. Login/logout lifetime is determined by how the standalone process is managed.
 
 ## Safe inspection
 
-`SSGG_READ_ONLY=1` in an unpackaged development launch adds `--safe-mode`, displays a read-only banner and disables mixer/profile mutations. It does not simulate devices. Initial application startup only calls `state.get`. The real backend's capability records determine what is displayed; no HID acquisition is initiated by this UI.
+`--read-only` always launches a **separate `--stdio --safe-mode` process with an isolated temporary config**, even if a writable socket is available. Electron also denies all audio, HID and profile mutation IPC; the read-only badge is not the security boundary. Real inventory is retained. No HID acquisition/query is initiated by opening the GUI. In unpackaged development, `SSGG_READ_ONLY=1` is equivalent.
 
-```sh
-SSGG_READ_ONLY=1 SSGG_SIDECAR=/absolute/trusted/ssgg-desktop npm start
-```
+The tray preference is local desktop state. “Keep running in the tray” hides the window. If using stdio, quitting ends the owned child; if connected via socket, the external owner continues. Desktop settings display transport and persistence consequences explicitly.
+
+## Controls and observation
+
+- Streams use validated numeric backend IDs. Requested gain remains **0..1**; observed native amplification above 100% is retained, not clamped or rejected. Native effective volume/mute is displayed separately from base intent, group gain and ChatMix. A bounded base slider cannot request amplification.
+- Generic `WEBRTC VoiceEngine` labels use the backend's JSON app-key executable when present (for example `Discord`); the original raw application/stream remains the subtitle. Unknown identity is never guessed. A browser's already combined tabs cannot be separated.
+- Group **ChatMix side** assignment is independent of whether ChatMix is enabled or a physical wheel is available.
+- `device.set` is a narrow named API: selected ID, explicit hardware acquisition/release, sidetone 0..3, auto-off 0..255, status refresh. Controls require backend capability support and are disabled in safe mode. Baseline `UNSUPPORTED` remains a visible failure.
+- Acquisition does **not** enable mixing. Choose physical input in Mixer only after a fresh sample, then explicitly enable ChatMix. Hardware samples expose independent A/B gains; a scalar slider is only a disabled visualization, never converted back to a software request. No sample means no invented centered wheel.
+- Wireless connection, battery, last status/wheel timestamps, pending/error states, verified sidetone and sent-only auto-off are distinguished. `supported` means source-supported; `locallyValidated` is separate and currently false. This frontend integration does not claim physical command validation.
+- Saved profile names follow Rust's nonempty, at-most-80-UTF-8-byte policy, including punctuation. They are JSON names, not filesystem paths.
 
 ## Tests
 
@@ -36,35 +65,21 @@ SSGG_READ_ONLY=1 SSGG_SIDECAR=/absolute/trusted/ssgg-desktop npm start
 npm test
 npm run typecheck
 npm run smoke
-# Real Rust inventory only; no audio/HID mutations:
-SSGG_SIDECAR=/absolute/trusted/ssgg-desktop xvfb-run -a node tests/live-readonly.mjs
-# Design evidence, using an explicitly labelled separate test transport:
-xvfb-run -a node tests/capture.mjs
+# Real inventory only; uses the staged local binary and never acquires HID:
+SSGG_PACTL=/absolute/path/to/pactl xvfb-run -a node tests/launch-readonly.mjs
+SSGG_SIDECAR="$PWD/local-bin/ssgg-desktop" xvfb-run -a node tests/live-readonly.mjs
 ```
 
-`smoke` launches real Electron with **Chromium sandboxing enabled** and checks the renderer's Linux seccomp status, context isolation, absent Node integration, validated IPC, real JSON-lines process communication, native control bridge requests/read-back, profiles and tray lifetime. Audio mutation tests use `tests/fixture-sidecar.cjs` only; it is never a production fallback. `capture` also exercises the actual manufacturer-download/caching path and needs outbound access to that one official image URL. `live-readonly` uses the real Rust binary and current host inventory without mutation requests. Screenshots live under `../.impeccable/review`; test process artifacts are ignored in `artifacts/`.
+`smoke` runs real sandboxed Electron, checks renderer Linux seccomp/context isolation, native control bridge requests/read-back, profiles, tray lifetime, private UDS transport/reconnection, external owner survival, config-lock error, unsupported hardware rejection and safe-mode gating. Fixture sidecars are installed as private 755 test copies; production executable validation is not relaxed. Unit tests cover amplified observations, hardware DTO/commands, profile names, stale photo promises, disabled slider synchronization and pre-decode artwork limits. Hardware tests use fixtures; no live audio/HID writes are performed.
 
-### Linux sandbox prerequisite
+The actual local-launch check exercises `scripts/launch.mjs` with real Rust safe inventory and checks 1320/900px layouts. Artifacts are ignored under `artifacts/`; read-only design evidence also lives under `.impeccable/review`.
 
-Do **not** use `--no-sandbox`. On this host, Ubuntu denies unprivileged user namespaces and npm's Electron helper is not root-owned setuid. Tests were run with Electron's generated `node_modules/electron/dist/chrome-sandbox` symlinked to the **already installed** `/opt/google/chrome/chrome-sandbox` (verified root-owned, mode 4755). No root permissions or host security-policy changes were made. The unprivileged npm helper was preserved as `chrome-sandbox.unprivileged`. This is local build-dependency setup, not committed configuration or a portable installer. A fresh install needs an available, correctly configured Chromium sandbox; provision one through the normal distro/packaging process rather than disabling sandboxing. Playwright's `chromiumSandbox:true` is deliberate: its default would silently pass `--no-sandbox`.
+### Chromium sandbox
 
-## Bridge and adapter
+Never pass `--no-sandbox` or disable host security. Playwright sets `chromiumSandbox:true` explicitly. This development host has an already root-owned 4755 `/opt/google/chrome/chrome-sandbox`; the generated npm Electron helper was preserved as `chrome-sandbox.original` and a local symlink used for tests. **No machine-specific symlink is committed or included in a portable installer.** Fresh installations must use a normally provisioned distro/packaged Chromium sandbox. Headless tests select X11 explicitly for Xvfb; normal launch keeps platform defaults.
 
-- `electron/preload.ts`: frozen, named API; no exposed `ipcRenderer`, arbitrary channels, shell or paths.
-- `electron/security.ts`: exact top-level sender-frame and local asset checks; trusted sidecar path selection.
-- `electron/rpc.ts`: JSON-lines framing, request IDs, bounded pending requests, 5-second timeouts, disconnect/error rejection, 2 MiB response buffer.
-- `electron/adapter.ts`: actual Rust `mixer` / `backend` snapshot and numeric stream IDs → validated renderer DTO. Numeric IDs are validated before conversion back to the Rust command format.
-- `src/shared/contracts.ts`: strict command schemas and finite bounded gains/balance.
-- `electron/artwork.ts`: native local image picker, fixed-source opt-in download, raster-only decoding, bounded input, model-scoped cache. Only transparent margins are trimmed; the product and receiver remain intact.
+## Artwork and privacy
 
-Groups are logical policies over application streams, not virtual audio buses or DSP processing. The GUI intentionally offers no EQ curve, artificial meter, guessed battery percentage, raw HID report, or unsupported RGB action. Physical wheel acquisition is distinct from the working on-screen balance. The native microphone and hardware microphone are distinct capabilities; this UI currently does not expose either microphone gain API.
+Exact-model photography is optional and downloaded only on request from the catalogued manufacturer URL, or chosen through a native local picker. Only static PNG and ordinary baseline/progressive JPEG are accepted. A bounded header/chunk scan enforces 8 MiB input, 8000px per side and 16-megapixel budgets **before native decoding**, including cached image reads; malformed/truncated metadata, SVG and animated PNG are rejected. Device/request generations prevent a late photo from being displayed as another selected model.
 
-## Lifetime and privacy
-
-“Keep running in the tray” is an explicit local desktop preference, default false. Hiding the window retains the main process and its sidecar. Quitting stops the child. No systemd service is installed or managed here; this implementation does not survive logout independently. Shell tray support varies; the setting explains this limitation. Desktop preferences live in Electron's user-data directory and are separate from Rust mixer settings.
-
-No telemetry, accounts, promotions, automatic artwork downloads or renderer network permissions. A user-requested official photo download contacts the manufacturer's image CDN and caches the result locally. Other models receive an honest no-image state plus a local picker until an exact-model source is catalogued.
-
-## Artwork rights
-
-The exact Arctis Nova 7 Gen 2 source and image URL are recorded in `src/shared/artwork-catalog.ts`. Product photography belongs to SteelSeries, is not covered by the repository's code license, and is **not bundled for redistribution**. USB VID/PID does not determine casing color; the black-variant disclaimer is visible. Cache sidecars retain provenance. SSGG is independent and unaffiliated. Review screenshots containing manufacturer imagery are development evidence, not a license to redistribute its product art.
+SteelSeries owns its product photography; it is not bundled or relicensed with this code. The catalog records model, URL and attribution; cached sidecars retain provenance. The black-variant disclaimer remains visible because USB IDs do not identify casing color. Unknown models get no substitute image. No accounts, promotions, telemetry, automatic downloads or synthetic meters.

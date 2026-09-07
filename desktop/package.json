@@ -9,7 +9,9 @@
     "test": "NODE_ENV=test vitest run",
     "typecheck": "tsc --noEmit",
     "start": "npm run build && electron .",
-    "smoke": "npm run build && xvfb-run -a node tests/smoke.mjs"
+    "build:local": "node scripts/build-local.mjs",
+    "launch": "node scripts/launch.mjs",
+    "smoke": "npm run build && xvfb-run -a node tests/smoke.mjs && xvfb-run -a node tests/service-smoke.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

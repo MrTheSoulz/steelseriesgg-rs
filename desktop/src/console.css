@@ -345,9 +345,36 @@
     flex-shrink: 0;
   }
   .app-volume {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: center;
+    gap: 3px;
+  }
+  .hardware-bridge {
+    margin-bottom: 32px;
+  }
+  .hardware-bridge .capability-row {
+    grid-template-columns: minmax(160px, 1fr) auto auto;
+  }
+  .hardware-bridge input[type="number"] {
+    width: 80px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--paper);
+  }
+  .hardware-bridge .device-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 30px;
+    margin: 20px 0;
+  }
+  .input-mode {
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 12px;
+    font-size: 12px;
+    margin: 14px 0;
   }
   .app-volume output {
     font-size: 11px;

@@ -8,7 +8,7 @@ const out = path.resolve("../.impeccable/review");
 await mkdir(out, { recursive: true });
 const app = await electron.launch({
   chromiumSandbox: true,
-  args: ["."],
+  args: ["--ozone-platform=x11", "."],
   env: {
     ...process.env,
     NODE_ENV: "test",

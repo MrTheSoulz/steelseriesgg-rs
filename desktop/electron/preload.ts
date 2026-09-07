@@ -6,6 +6,7 @@ const bridge: DesktopBridge = {
   setStream: (value) => ipcRenderer.invoke("ssgg:stream", value),
   setGroup: (value) => ipcRenderer.invoke("ssgg:group", value),
   setChatmix: (value) => ipcRenderer.invoke("ssgg:chatmix", value),
+  setDevice: (value) => ipcRenderer.invoke("ssgg:device", value),
   saveProfile: (name) => ipcRenderer.invoke("ssgg:profile-save", name),
   applyProfile: (name) => ipcRenderer.invoke("ssgg:profile-apply", name),
   setCloseToTray: (enabled) => ipcRenderer.invoke("ssgg:close-to-tray", enabled),

@@ -19,7 +19,10 @@ export function Range({
   const [draft, setDraft] = useState(value);
   const dirty = useRef(false);
   useEffect(() => {
-    if (!dirty.current && !disabled) setDraft(value);
+    if (!dirty.current || disabled) {
+      dirty.current = false;
+      setDraft(value);
+    }
   }, [value, disabled]);
   function commit() {
     if (dirty.current && !disabled) {

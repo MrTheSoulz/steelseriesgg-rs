@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, session } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { stat, readFile, writeFile, mkdir, rename } from "node:fs/promises";
+import { stat, readFile, writeFile, mkdir, rename, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { connectPrivateService, assertWritable } from "./service";
 import { ArtworkStore } from "./artwork";
 import { adaptSnapshot, toWireCommand } from "./adapter";
 import path from "node:path";
@@ -14,8 +16,12 @@ let rpc: JsonLineClient | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 let lastSnapshot: Snapshot | null = null;
+let connection: Awaited<ReturnType<typeof connectPrivateService>> = null;
+let connecting: Promise<void> | null = null;
+let safeConfigDir: string | null = null;
+let attemptedSocket = false;
 const runtime: RuntimeInfo = {
-  readOnly: !app.isPackaged && process.env.SSGG_READ_ONLY === "1",
+  readOnly: process.argv.includes("--read-only") || (!app.isPackaged && process.env.SSGG_READ_ONLY === "1"),
   connected: false,
   message: "Audio service unavailable",
   trayAvailable: false,
@@ -28,7 +34,33 @@ if (runtime.testMode && process.env.SSGG_TEST_USER_DATA && path.isAbsolute(proce
 const rendererPath = path.join(__dirname, "../dist/index.html");
 const rendererURL = pathToFileURL(rendererPath).href;
 async function startSidecar() {
+  let diagnostics = "";
   try {
+    // Inspection never connects to a writable daemon, even when one is available.
+    if (!runtime.readOnly && (!runtime.testMode || process.env.SSGG_TEST_SOCKET === "1")) {
+      connection = await connectPrivateService(process.env.XDG_RUNTIME_DIR);
+      if (connection) {
+        attemptedSocket = true;
+        runtime.transport = "socket";
+        rpc = connection.rpc;
+        const current = connection;
+        current.socket.on("close", () => {
+          if (connection !== current) return;
+          runtime.connected = false;
+          runtime.message = "Background service disconnected. Refresh to reconnect; ChatMix may need enabling again.";
+          current.close();
+          connection = null;
+        });
+        await rpc.request("state.get", {});
+        runtime.connected = true;
+        runtime.message = "Background service · continues when SSGG quits";
+        return;
+      }
+      if (attemptedSocket)
+        throw new Error("Background service is stopped. Start it, then refresh; no competing sidecar was started.");
+    }
+    runtime.transport = "sidecar";
+    if (runtime.readOnly && !safeConfigDir) safeConfigDir = await mkdtemp(path.join(tmpdir(), "ssgg-inspection-"));
     const executable = resolveSidecar(
       app.isPackaged,
       process.resourcesPath,
@@ -44,29 +76,64 @@ async function startSidecar() {
       throw new Error("Sidecar is not a trusted executable");
     child = spawn(
       executable,
-      ["--stdio", ...(!app.isPackaged && process.env.SSGG_READ_ONLY === "1" ? ["--safe-mode"] : [])],
+      ["--stdio", ...(runtime.readOnly ? ["--safe-mode", "--config", path.join(safeConfigDir!, "state.json")] : [])],
       { shell: false, stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
     );
-    rpc = new JsonLineClient(child.stdin, child.stdout);
-    child.stderr.on("data", () => {
-      /* Drain diagnostics; never forward raw paths or logs to renderer. */
+    const ownedChild = child;
+    const ownedRpc = new JsonLineClient(child.stdin, child.stdout);
+    rpc = ownedRpc;
+    child.stderr.on("data", (data) => {
+      diagnostics = (diagnostics + String(data)).slice(-4096);
     });
     child.on("error", () => {
+      if (child !== ownedChild) return;
       runtime.connected = false;
       runtime.message = "Audio service unavailable";
-      rpc?.close();
+      ownedRpc.close();
     });
     child.on("exit", () => {
+      if (child !== ownedChild) return;
       runtime.connected = false;
-      runtime.message = "Audio service disconnected. Reopen SSGG to reconnect.";
-      rpc?.close();
+      runtime.message = /lock|already|in use/i.test(diagnostics)
+        ? "Another SSGG service owns this configuration. Use its private socket or quit the competing sidecar, then refresh."
+        : "Audio service exited. Check the matching binary and pactl installation, then refresh.";
+      ownedRpc.close(runtime.message);
+      child = null;
     });
+    await rpc.request("state.get", {});
     runtime.connected = true;
-    runtime.message = "Local audio service";
-  } catch {
+    runtime.message = runtime.readOnly
+      ? "Read-only inventory · isolated safe sidecar"
+      : "Window-owned sidecar · stops when SSGG quits";
+  } catch (error) {
     runtime.connected = false;
-    runtime.message = "Audio service unavailable";
+    if (connection) {
+      const current = connection;
+      connection = null;
+      current.close();
+    }
+    if (child) {
+      const current = child;
+      child = null;
+      current.kill("SIGTERM");
+    }
+    if (/lock|already|in use/i.test(diagnostics))
+      runtime.message =
+        "Another SSGG service owns this configuration. Use its private socket or quit the competing sidecar, then refresh.";
+    else
+      runtime.message =
+        error instanceof Error && /private|service|socket/i.test(error.message)
+          ? error.message
+          : "Audio service unavailable";
   }
+}
+async function ensureService() {
+  if (runtime.connected) return;
+  if (!connecting)
+    connecting = startSidecar().finally(() => {
+      connecting = null;
+    });
+  await connecting;
 }
 function handle(channel: string, action: (...args: any[]) => unknown) {
   ipcMain.handle(channel, (event, ...args) => {
@@ -113,9 +180,10 @@ app.whenReady().then(async () => {
   session.defaultSession.webRequest.onBeforeRequest((details, callback) =>
     callback({ cancel: !isLocalAsset(details.url, path.join(__dirname, "../dist")) }),
   );
-  await startSidecar();
+  await ensureService();
   handle("ssgg:runtime", () => ({ ...runtime }));
   handle("ssgg:state", async () => {
+    await ensureService();
     if (!rpc || !runtime.connected) throw new Error(runtime.message);
     const result = await rpc.request("state.get", {});
     try {
@@ -130,6 +198,7 @@ app.whenReady().then(async () => {
     ["ssgg:profile-apply", "profiles.apply"],
   ])
     handle(channel, async (name) => {
+      assertWritable(!!runtime.readOnly);
       const params = validateCommand(method, { name });
       if (!rpc || !runtime.connected) throw new Error(runtime.message);
       await rpc.request(method, params);
@@ -170,9 +239,11 @@ app.whenReady().then(async () => {
     "ssgg:stream": "stream.set",
     "ssgg:group": "group.set",
     "ssgg:chatmix": "chatmix.set",
+    "ssgg:device": "device.set",
   };
   for (const [channel, method] of Object.entries(mutations))
     handle(channel, async (params) => {
+      assertWritable(!!runtime.readOnly);
       const valid = toWireCommand(method, params);
       if (!rpc || !runtime.connected) throw new Error(runtime.message);
       await rpc.request(method, valid);
@@ -199,7 +270,7 @@ app.whenReady().then(async () => {
           },
         },
         { type: "separator" },
-        { label: "Quit SSGG and its sidecar", click: () => app.quit() },
+        { label: "Quit SSGG", click: () => app.quit() },
       ]),
     );
     tray.on("click", () => window?.show());
@@ -213,7 +284,9 @@ app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => {
   quitting = true;
   rpc?.close();
+  connection?.close();
   child?.kill("SIGTERM");
+  if (safeConfigDir) void rm(safeConfigDir, { recursive: true, force: true });
   tray?.destroy();
 });
 app.on("activate", () => {

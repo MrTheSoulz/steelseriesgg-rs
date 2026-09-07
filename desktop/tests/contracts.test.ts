@@ -7,7 +7,7 @@ describe("renderer command boundary", () => {
     expect(() => validateCommand("chatmix.set", { balance: 1.01 })).toThrow();
     expect(() => validateCommand("group.set", { id: "game", wheelSide: "c" })).toThrow();
     expect(() => validateCommand("settings.set", { executable: "/bin/sh" })).toThrow();
-    expect(() => validateCommand("profiles.save", { name: "../evil" })).toThrow();
+    expect(validateCommand("profiles.save", { name: "../label" })).toEqual({ name: "../label" }); // Names are JSON keys, not paths.
     expect(() => validateCommand("device.set", { id: "x", rawReport: [1, 2] })).toThrow();
     expect(validateCommand("state.get", {})).toEqual({});
   });

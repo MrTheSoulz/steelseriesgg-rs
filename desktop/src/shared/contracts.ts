@@ -1,14 +1,17 @@
 import { z } from "zod";
 export const identifier = z.string().min(1).max(256);
 export const gain = z.number().finite().min(0).max(1);
+const observedGain = z.number().finite().min(0).max(65536); // Pulse u32 fixed-point volume; writes remain 0..1.
+export const inputMode = z.enum(["software", "hardware"]);
 export const groupId = z.enum(["game", "chat", "media", "unmanaged"]);
 export const side = z.enum(["a", "b", "none"]);
 const profileName = z
   .string()
-  .trim()
   .min(1)
-  .max(64)
-  .regex(/^[\p{L}\p{N} _-]+$/u, "Use letters, numbers, spaces, hyphens or underscores");
+  .refine(
+    (v) => v.trim().length > 0 && new TextEncoder().encode(v).length <= 80,
+    "Use a nonempty profile name of at most 80 UTF-8 bytes",
+  );
 const patchFields = <T extends z.ZodRawShape>(shape: T) =>
   z
     .object(shape)
@@ -36,11 +39,26 @@ const schemas: Record<string, z.ZodTypeAny> = {
   "chatmix.set": patchFields({
     balance: z.number().finite().min(-1).max(1).optional(),
     enabled: z.boolean().optional(),
+    inputMode: inputMode.optional(),
   }),
+  "device.set": patchFields({
+    id: identifier,
+    hardwareEnabled: z.boolean().optional(),
+    sidetone: z.number().int().min(0).max(3).optional(),
+    autoOffMinutes: z.number().int().min(0).max(255).optional(),
+    statusRefresh: z.boolean().optional(),
+  }).refine(
+    (v) =>
+      !(
+        v.hardwareEnabled === false &&
+        (v.sidetone !== undefined || v.autoOffMinutes !== undefined || v.statusRefresh === true)
+      ),
+    "Release cannot be combined with hardware writes",
+  ),
   "settings.set": z.object({ closeToTray: z.boolean() }).strict(),
   "profiles.save": z.object({ name: profileName }).strict(),
   "profiles.apply": z.object({ name: profileName }).strict(),
-  // Unverified HID controls are deliberately not exposed at this boundary.
+  // Availability is advertised by the backend; validation never implies physical verification.
 };
 export function validateCommand(method: string, params: unknown): unknown {
   const schema = Object.hasOwn(schemas, method) ? schemas[method] : undefined;
@@ -52,7 +70,9 @@ export const streamSchema = z.object({
   appKey: identifier,
   name: z.string().max(512),
   appName: z.string().max(256),
-  volume: gain,
+  volume: observedGain,
+  effectiveVolume: observedGain.optional(),
+  effectiveMuted: z.boolean().optional(),
   muted: z.boolean(),
   group: groupId,
   sinkId: z.union([z.string(), z.number()]).nullable().optional(),
@@ -64,6 +84,29 @@ export const groupSchema = z.object({
   muted: z.boolean(),
   wheelSide: side,
 });
+export const physicalSchema = z.object({
+  deviceId: identifier.nullable().optional(),
+  hardwareEnabled: z.boolean(),
+  hardwareAcquired: z.boolean(),
+  connected: z.boolean().nullable(),
+  battery: z.number().min(0).max(100).nullable(),
+  charging: z.boolean().nullable().optional(),
+  sample: z
+    .object({
+      gamePercent: z.number().min(0).max(100),
+      chatPercent: z.number().min(0).max(100),
+      balance: z.number().min(-1).max(1),
+      receivedAtMs: z.number().nonnegative(),
+    })
+    .nullable(),
+  statusAtMs: z.number().nonnegative().nullable(),
+  stale: z.boolean(),
+  pending: z.boolean(),
+  sidetone: z.number().int().min(0).max(3).nullable(),
+  autoOffMinutesSent: z.number().int().min(0).max(255).nullable(),
+  lastCommand: z.string().max(1024).nullable(),
+  error: z.string().max(2048).nullable(),
+});
 export const deviceSchema = z.object({
   id: identifier,
   name: z.string().max(256),
@@ -72,7 +115,16 @@ export const deviceSchema = z.object({
   connected: z.boolean(),
   kind: z.enum(["headset", "keyboard", "other"]).default("other"),
   battery: z.number().min(0).max(100).nullable().optional(),
-  capabilities: z.record(z.object({ supported: z.boolean(), reason: z.string().max(1024).optional() })).default({}),
+  physical: physicalSchema.optional(),
+  capabilities: z
+    .record(
+      z.object({
+        supported: z.boolean(),
+        reason: z.string().max(1024).optional(),
+        locallyValidated: z.boolean().optional(),
+      }),
+    )
+    .default({}),
 });
 export const snapshotSchema = z.object({
   readOnly: z.boolean().optional(),
@@ -82,9 +134,11 @@ export const snapshotSchema = z.object({
   chatmix: z.object({
     balance: z.number().min(-1).max(1),
     enabled: z.boolean(),
+    inputMode: inputMode.optional(),
     wheelAvailable: z.boolean().default(false),
     reason: z.string().optional(),
   }),
+  physical: physicalSchema.optional(),
   audio: z.object({ available: z.boolean(), reason: z.string().optional() }),
   profiles: z.array(z.object({ name: profileName })).default([]),
 });
@@ -100,7 +154,7 @@ export type RuntimeInfo = {
   message: string;
   trayAvailable: boolean;
   closeToTray: boolean;
-  transport: "sidecar";
+  transport: "sidecar" | "socket";
   testMode: boolean;
 };
 export interface DesktopBridge {
@@ -108,7 +162,14 @@ export interface DesktopBridge {
   getRuntime(): Promise<RuntimeInfo>;
   setStream(value: StreamPatch): Promise<void>;
   setGroup(value: GroupPatch): Promise<void>;
-  setChatmix(value: { balance?: number; enabled?: boolean }): Promise<void>;
+  setChatmix(value: { balance?: number; enabled?: boolean; inputMode?: "software" | "hardware" }): Promise<void>;
+  setDevice(value: {
+    id: string;
+    hardwareEnabled?: boolean;
+    sidetone?: number;
+    autoOffMinutes?: number;
+    statusRefresh?: boolean;
+  }): Promise<void>;
   saveProfile(name: string): Promise<void>;
   applyProfile(name: string): Promise<void>;
   setCloseToTray(enabled: boolean): Promise<RuntimeInfo>;

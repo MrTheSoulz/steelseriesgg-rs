@@ -12,6 +12,18 @@ import type { Snapshot, DesktopBridge, Stream, Group } from "./shared/contracts"
 import { Range } from "./Range";
 export type Mutate = (action: (bridge: DesktopBridge) => Promise<unknown>, message?: string) => Promise<void>;
 const groupNames = { game: "Game", chat: "Chat", media: "Media", unmanaged: "Unmanaged" };
+export function appLabel(stream: Stream) {
+  if (/^(WEBRTC VoiceEngine|AudioStream|unknown)?$/i.test(stream.appName.trim())) {
+    try {
+      const key = JSON.parse(stream.appKey);
+      if (Array.isArray(key) && typeof key[0] === "string" && key[0].trim())
+        return key[0].split("/").pop() || stream.appName;
+    } catch {
+      /* No reliable executable identity: preserve the native label. */
+    }
+  }
+  return stream.appName || "Unnamed application";
+}
 const GroupIcon = ({ id }: { id: Group["id"] }) =>
   id === "chat" ? <MessageCircle size={20} /> : id === "media" ? <Music2 size={20} /> : <Gamepad2 size={20} />;
 export default function Mixer({
@@ -33,6 +45,8 @@ export default function Mixer({
       .map((g) => g.name)
       .join(" + ") || "No group assigned";
   const balance = snapshot?.chatmix.balance ?? 0;
+  const hardware = snapshot?.chatmix.inputMode === "hardware";
+  const sample = snapshot?.chatmix.wheelAvailable ? snapshot.physical?.sample : null;
   return (
     <>
       <section className={"balance-panel " + (enabled ? "mix-enabled" : "")} aria-label="ChatMix">
@@ -52,6 +66,27 @@ export default function Mixer({
             <ArrowRight size={16} />
           </button>
         </div>
+        {snapshot?.physical && (
+          <label className="input-mode">
+            Balance input{" "}
+            <select
+              aria-label="ChatMix input"
+              disabled={!ready}
+              value={hardware ? "hardware" : "software"}
+              onChange={(e) =>
+                void mutate(
+                  (b) => b.setChatmix({ inputMode: e.target.value as "software" | "hardware" }),
+                  "ChatMix input updated",
+                )
+              }
+            >
+              <option value="software">On-screen balance</option>
+              <option value="hardware" disabled={!snapshot.chatmix.wheelAvailable}>
+                Physical wheel
+              </option>
+            </select>
+          </label>
+        )}
         <div className="balance-control">
           <div className="balance-labels">
             <div>
@@ -59,28 +94,36 @@ export default function Mixer({
               <strong>{sideLabel("a")}</strong>
             </div>
             <span className="balance-readout">
-              {balance === 0 ? "Centered" : `${Math.round(Math.abs(balance) * 100)}% toward ${balance < 0 ? "A" : "B"}`}
+              {hardware
+                ? sample
+                  ? `A ${sample.gamePercent}% · B ${sample.chatPercent}%`
+                  : "Wheel unavailable"
+                : balance === 0
+                  ? "Centered"
+                  : `${Math.round(Math.abs(balance) * 100)}% toward ${balance < 0 ? "A" : "B"}`}
             </span>
             <div>
               <strong>{sideLabel("b")}</strong>
               <span className="side-token">B</span>
             </div>
           </div>
-          <div className="balance-track">
-            <Range
-              label="ChatMix balance"
-              min={-1}
-              value={balance}
-              disabled={!ready || !enabled}
-              onCommit={(balance) => void mutate((b) => b.setChatmix({ balance }), "Balance updated")}
-            />
-            <span className="center-mark" />
-          </div>
+          {(!hardware || sample) && (
+            <div className="balance-track">
+              <Range
+                label="ChatMix balance"
+                min={-1}
+                value={hardware ? sample!.balance : balance}
+                disabled={!ready || !enabled || hardware}
+                onCommit={(balance) => void mutate((b) => b.setChatmix({ balance }), "Balance updated")}
+              />
+              <span className="center-mark" />
+            </div>
+          )}
           <div className="balance-ticks">
             <span>Only side A</span>
             <button
               className="text-button"
-              disabled={!ready || !enabled || balance === 0}
+              disabled={!ready || !enabled || hardware || balance === 0}
               onClick={() => void mutate((b) => b.setChatmix({ balance: 0 }), "Balance centered")}
             >
               Equal balance
@@ -89,9 +132,11 @@ export default function Mixer({
           </div>
         </div>
         <p className="helper">
-          {enabled
-            ? "Your base volumes stay separate from ChatMix attenuation. Disable ChatMix to restore the full mix."
-            : "Assign your applications below, choose A or B for each group, then enable ChatMix. Nothing changes until you opt in."}
+          {snapshot?.readOnly
+            ? "Read-only session — mix controls are blocked."
+            : enabled
+              ? "Your base volumes stay separate from ChatMix attenuation. Disable ChatMix to restore the full mix."
+              : "ChatMix disabled. Assign applications and choose each group’s ChatMix side, then enable. Group gain and native stream volume work independently."}
         </p>
         {snapshot && !snapshot.chatmix.wheelAvailable && (
           <p className="capability-note">
@@ -121,15 +166,15 @@ export default function Mixer({
               <div className="channel-body">
                 <div className="channel-detail">
                   <label>
-                    Wheel side
+                    ChatMix side
                     <select
-                      aria-label={`${group.name} wheel side`}
+                      aria-label={`${group.name} ChatMix side`}
                       value={group.wheelSide}
                       disabled={!ready}
                       onChange={(e) =>
                         void mutate(
                           (b) => b.setGroup({ id: group.id, wheelSide: e.target.value as Group["wheelSide"] }),
-                          "Wheel side updated",
+                          "ChatMix side updated",
                         )
                       }
                     >
@@ -141,7 +186,7 @@ export default function Mixer({
                   <p>
                     {snapshot.streams
                       .filter((s) => s.group === group.id)
-                      .map((s) => s.appName)
+                      .map(appLabel)
                       .join(", ") || "No applications assigned"}
                   </p>
                   <button
@@ -189,7 +234,7 @@ export default function Mixer({
               <h2>
                 Applications <span className="count">{snapshot.streams.length}</span>
               </h2>
-              <p>Choose where each active stream belongs.</p>
+              <p>Native stream volume is separate from group gain and ChatMix attenuation.</p>
             </div>
             <span className="quiet-label">Native audio streams</span>
           </div>
@@ -208,12 +253,14 @@ export default function Mixer({
                       <AppWindow size={19} />
                     </span>
                     <div>
-                      <strong>{stream.appName}</strong>
-                      <small>{stream.name}</small>
+                      <strong>{appLabel(stream)}</strong>
+                      <small>
+                        {appLabel(stream) !== stream.appName ? `${stream.appName} · ${stream.name}` : stream.name}
+                      </small>
                     </div>
                   </div>
                   <select
-                    aria-label={`${stream.appName} group`}
+                    aria-label={`${appLabel(stream)} group`}
                     value={stream.group}
                     disabled={!ready}
                     onChange={(e) =>
@@ -231,19 +278,23 @@ export default function Mixer({
                   </select>
                   <div className="app-volume">
                     <Range
-                      label={`${stream.appName} volume`}
-                      value={stream.volume}
+                      label={`${appLabel(stream)} volume`}
+                      value={Math.min(1, stream.volume)}
                       disabled={!ready}
                       onCommit={(volume) =>
                         void mutate((b) => b.setStream({ id: stream.id, volume }), "Application volume updated")
                       }
                     />
-                    <output>{Math.round(stream.volume * 100)}%</output>
+                    <output className="native-volume">
+                      Native{"\u00a0"}
+                      {Math.round((stream.effectiveVolume ?? stream.volume) * 100)}% · Base{"\u00a0"}
+                      {Math.round(stream.volume * 100)}%{stream.effectiveMuted ? " · Muted" : ""}
+                    </output>
                   </div>
                   <button
                     className={"icon-button " + (stream.muted ? "is-muted" : "")}
                     disabled={!ready}
-                    aria-label={`${stream.muted ? "Unmute" : "Mute"} ${stream.appName}`}
+                    aria-label={`${stream.muted ? "Unmute" : "Mute"} ${appLabel(stream)}`}
                     aria-pressed={stream.muted}
                     onClick={() => void mutate((b) => b.setStream({ id: stream.id, muted: !stream.muted }))}
                   >

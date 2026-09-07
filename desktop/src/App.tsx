@@ -142,7 +142,11 @@ export default function App() {
         </div>
         <div className="rail-footer">
           <span className={"status-dot " + (snapshot ? "online" : "")} />
-          {snapshot ? "Local service connected" : "Service not connected"}
+          {snapshot
+            ? runtime?.transport === "socket"
+              ? "Background service"
+              : "Window-owned sidecar"
+            : "Service not connected"}
           <small>Local by design. Yours to control.</small>
         </div>
       </aside>
@@ -187,7 +191,7 @@ export default function App() {
               <p>
                 {snapshot
                   ? "The change was not confirmed. Refresh to read the current audio state, then try again."
-                  : "Check the matching SSGG sidecar and reopen the desktop if disconnected. Controls stay unavailable until a fresh snapshot is received."}
+                  : "Check the matching SSGG service, then refresh to reconnect. Controls stay unavailable until a fresh snapshot is received."}
               </p>
             </div>
           </div>
@@ -198,7 +202,15 @@ export default function App() {
           ) : tab === "profiles" ? (
             <Profiles snapshot={snapshot} busy={busy} mutate={mutate} />
           ) : tab === "devices" ? (
-            <Devices devices={snapshot?.devices ?? []} selected={selectedDevice} onSelect={setSelectedDevice} />
+            <Devices
+              devices={snapshot?.devices ?? []}
+              selected={selectedDevice}
+              onSelect={setSelectedDevice}
+              physical={snapshot?.physical}
+              readOnly={snapshot?.readOnly || runtime?.readOnly}
+              saving={busy}
+              mutate={mutate}
+            />
           ) : (
             <Mixer snapshot={snapshot} busy={busy} loading={loading} mutate={mutate} />
           )}

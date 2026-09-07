@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Headphones,
   Keyboard,
@@ -11,48 +11,62 @@ import {
   Battery,
   ShieldCheck,
 } from "lucide-react";
-import type { Device } from "./shared/contracts";
+import type { Device, Snapshot } from "./shared/contracts";
+import type { Mutate } from "./Mixer";
+import HardwareControls from "./HardwareControls";
 import { artworkFor } from "./shared/artwork-catalog";
 export default function Devices({
   devices,
   selected,
   onSelect,
+  physical,
+  readOnly = false,
+  saving = false,
+  mutate,
 }: {
   devices: Device[];
   selected: string;
   onSelect: (id: string) => void;
+  physical?: Snapshot["physical"];
+  readOnly?: boolean;
+  saving?: boolean;
+  mutate?: Mutate;
 }) {
   const device = devices.find((d) => d.id === selected) || devices[0];
+  const photoGeneration = useRef(0);
   const [photo, setPhoto] = useState<string | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
-    let current = true;
+    const generation = ++photoGeneration.current;
     setPhoto(null);
     setError("");
+    setBusy(false);
     if (device)
       void window.ssgg
         ?.getArtwork(device.id)
         .then((v) => {
-          if (current) setPhoto(v);
+          if (generation === photoGeneration.current) setPhoto(v);
         })
         .catch(() => {
-          if (current) setError("Cached photo unavailable. Choose another image.");
+          if (generation === photoGeneration.current) setError("Cached photo unavailable. Choose another image.");
         });
     return () => {
-      current = false;
+      photoGeneration.current++;
     };
   }, [device?.id]);
   async function photoAction(download: boolean) {
     if (!device || !window.ssgg) return;
+    const generation = ++photoGeneration.current;
     setBusy(true);
     setError("");
     try {
-      setPhoto(await (download ? window.ssgg.downloadArtwork(device.id) : window.ssgg.chooseArtwork(device.id)));
+      const result = await (download ? window.ssgg.downloadArtwork(device.id) : window.ssgg.chooseArtwork(device.id));
+      if (generation === photoGeneration.current) setPhoto(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load photo.");
+      if (generation === photoGeneration.current) setError(e instanceof Error ? e.message : "Could not load photo.");
     } finally {
-      setBusy(false);
+      if (generation === photoGeneration.current) setBusy(false);
     }
   }
   if (!device)
@@ -170,6 +184,15 @@ export default function Devices({
           : "No verified manufacturer photo is catalogued for this exact model. Choose your own image; SSGG will not substitute a different model."}
       </p>
       <section className="hardware-controls">
+        <HardwareControls
+          key={device.id}
+          device={device}
+          physical={device.physical ?? (physical?.deviceId === device.id || !physical?.deviceId ? physical : undefined)}
+          bridgeAvailable={!!physical}
+          readOnly={readOnly}
+          busy={saving}
+          mutate={mutate}
+        />
         <div className="section-heading">
           <div>
             <h2>Device controls</h2>

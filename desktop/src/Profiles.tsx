@@ -12,7 +12,7 @@ export default function Profiles({
   mutate: Mutate;
 }) {
   const [name, setName] = useState("");
-  const valid = /^[\p{L}\p{N} _-]{1,64}$/u.test(name.trim());
+  const valid = name.trim().length > 0 && new TextEncoder().encode(name.trim()).length <= 80;
   return (
     <section className="profiles-page">
       <div className="section-heading">
@@ -33,7 +33,7 @@ export default function Profiles({
           Profile name
           <input
             value={name}
-            maxLength={64}
+            maxLength={80}
             placeholder="Music and calls"
             onChange={(e) => setName(e.target.value)}
             aria-describedby="profile-name-help"
@@ -45,7 +45,7 @@ export default function Profiles({
         </button>
       </form>
       <p id="profile-name-help" className="helper">
-        Use letters, numbers, spaces, hyphens or underscores. Saving an existing name replaces that profile.
+        Up to 80 UTF-8 bytes (some characters use more than one). Saving an existing name replaces that profile.
       </p>
       <div className="profile-list">
         {snapshot?.profiles.length ? (

@@ -19,11 +19,12 @@ export class ArtworkStore {
     }
   }
   private async save(device: Device, bytes: Buffer, origin: string) {
-    if (!isAllowedRaster(bytes)) throw new Error("Choose a PNG or JPEG image smaller than 8 MB.");
+    if (!isAllowedRaster(bytes))
+      throw new Error("Choose a valid static PNG or JPEG under 8 MB, 8000 pixels per side and 16 megapixels.");
     const image = nativeImage.createFromBuffer(bytes);
     if (image.isEmpty()) throw new Error("This image could not be decoded. Choose a different PNG or JPEG.");
     const size = image.getSize();
-    if (size.width > 8000 || size.height > 8000)
+    if (size.width > 8000 || size.height > 8000 || size.width * size.height > 16_000_000)
       throw new Error("Choose an image no larger than 8000 pixels per side.");
     const cropped = image.crop(contentBounds(image.toBitmap(), size.width, size.height));
     const png = (cropped.getSize().width > 1200 ? cropped.resize({ width: 1200 }) : cropped).toPNG();

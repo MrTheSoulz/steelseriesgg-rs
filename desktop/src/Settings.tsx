@@ -31,7 +31,7 @@ export default function Settings({
         <div>
           <h3>When you close the window</h3>
           <p>
-            Keep the desktop process and its audio sidecar running in the tray. Reopen SSGG from the tray or launcher.
+            Hide SSGG in the tray instead of quitting. A connected background service runs independently either way.
           </p>
           <label className="checkbox-label">
             <input
@@ -57,7 +57,7 @@ export default function Settings({
           <dl className="service-facts">
             <div>
               <dt>Connection</dt>
-              <dd>Private JSON-lines sidecar</dd>
+              <dd>{runtime?.transport === "socket" ? "Private Unix socket" : "Window-owned JSON-lines sidecar"}</dd>
             </div>
             <div>
               <dt>Network listener</dt>
@@ -69,8 +69,11 @@ export default function Settings({
             </div>
           </dl>
           <p className="helper">
-            Closing the window can leave SSGG in the tray. Quitting SSGG stops its child sidecar. This is not a
-            standalone system service and does not survive logout.
+            {runtime?.transport === "socket"
+              ? "Quitting SSGG only disconnects this window. The background service continues; its session is not stopped or reset. Reconnect on refresh. Login lifetime depends on how you launched the service."
+              : "No background service attached. Quitting SSGG stops this child sidecar; its session does not survive GUI quit. Launch the optional standalone service before opening the desktop to keep mixing without the GUI."}{" "}
+            Assignments, group gains and profiles are saved by the service. Hardware acquisition and ChatMix must be
+            explicitly re-enabled after a service restart or loss of hardware.
           </p>
         </div>
       </div>

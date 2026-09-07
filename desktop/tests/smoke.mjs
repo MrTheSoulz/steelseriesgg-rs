@@ -1,12 +1,15 @@
 import { _electron as electron } from "playwright";
-import { mkdir, readFile, writeFile, mkdtemp } from "node:fs/promises";
+import { mkdir, readFile, writeFile, mkdtemp, copyFile, chmod } from "node:fs/promises";
 import assert from "node:assert/strict";
 import path from "node:path";
 await mkdir("artifacts", { recursive: true });
 const testData = await mkdtemp("/tmp/ssgg-electron-test-");
+await copyFile("tests/fixture-sidecar.cjs", path.join(testData, "fixture-sidecar.cjs"));
+await chmod(path.join(testData, "fixture-sidecar.cjs"), 0o755);
+await copyFile("tests/fixture.json", path.join(testData, "fixture.json"));
 const app = await electron.launch({
   chromiumSandbox: true,
-  args: ["."],
+  args: ["--ozone-platform=x11", "."],
   env: {
     ...process.env,
     NODE_ENV: "test",
@@ -43,13 +46,13 @@ const log = path.resolve("artifacts/requests.jsonl");
 await writeFile(log, "");
 const live = await electron.launch({
   chromiumSandbox: true,
-  args: ["."],
+  args: ["--ozone-platform=x11", "."],
   env: {
     ...process.env,
     NODE_ENV: "test",
     SSGG_TEST_MODE: "1",
     SSGG_TEST_USER_DATA: testData,
-    SSGG_SIDECAR: path.resolve("tests/fixture-sidecar.cjs"),
+    SSGG_SIDECAR: path.join(testData, "fixture-sidecar.cjs"),
     SSGG_TEST_REQUEST_LOG: log,
   },
   timeout: 30000,
@@ -77,8 +80,8 @@ try {
   await page.getByRole("button", { name: "Mute Google Chrome", exact: true }).click();
   await page.getByRole("button", { name: "Unmute Google Chrome", exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.ssgg.getState())).streams[0].muted, true);
-  await page.getByRole("combobox", { name: "Media wheel side" }).selectOption("b");
-  await page.getByText("Wheel side updated", { exact: true }).waitFor();
+  await page.getByRole("combobox", { name: "Media ChatMix side" }).selectOption("b");
+  await page.getByText("ChatMix side updated", { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.ssgg.getState())).groups[2].wheelSide, "b");
   await page.getByRole("button", { name: "Enable ChatMix" }).click();
   await page.getByRole("button", { name: "Disable ChatMix" }).waitFor();

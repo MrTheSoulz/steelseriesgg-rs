@@ -10,6 +10,20 @@
         "name": "playStream",
         "appName": "WEBRTC VoiceEngine",
         "volume": 1,
+        "effectiveVolume": 1,
+        "effectiveMuted": false,
+        "muted": false,
+        "group": "unmanaged",
+        "sinkId": 3798
+      },
+      {
+        "id": "8665",
+        "appKey": "[\"Hermes\",\"Chromium\",\"\"]",
+        "name": "Playback",
+        "appName": "Chromium",
+        "volume": 1,
+        "effectiveVolume": 1,
+        "effectiveMuted": false,
         "muted": false,
         "group": "unmanaged",
         "sinkId": 3798
@@ -49,36 +63,44 @@
         "battery": null,
         "capabilities": {
           "autoOff": {
-            "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
           },
           "battery": {
-            "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
           },
           "hardwareEq": {
             "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
           },
           "micMute": {
             "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
           },
           "micVolume": {
             "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
           },
           "physicalChatmix": {
-            "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
           },
           "rgb": {
             "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
           },
           "sidetone": {
-            "supported": false,
-            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
           }
         }
       }
@@ -86,8 +108,25 @@
     "chatmix": {
       "balance": 0,
       "enabled": false,
+      "inputMode": "software",
       "wheelAvailable": false,
-      "reason": "The local service has not exposed verified physical-wheel input."
+      "reason": "Enable hardware in Devices, then move the wheel. Hardware acquisition does not enable ChatMix."
+    },
+    "physical": {
+      "deviceId": null,
+      "hardwareEnabled": false,
+      "hardwareAcquired": false,
+      "connected": null,
+      "battery": null,
+      "charging": null,
+      "sample": null,
+      "statusAtMs": null,
+      "stale": false,
+      "pending": false,
+      "sidetone": null,
+      "autoOffMinutesSent": null,
+      "lastCommand": null,
+      "error": null
     },
     "audio": {
       "available": true
