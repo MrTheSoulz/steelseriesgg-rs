@@ -154,6 +154,21 @@ impl Controller {
             owner: None,
         }
     }
+    /// Recheck the live owner at audio command boundaries, not a cached GUI sample.
+    pub fn audio_write_guard(&self) -> Arc<dyn Fn() -> bool + Send + Sync> {
+        let shared = self.shared.clone();
+        Arc::new(move || {
+            let shared = shared.lock();
+            shared.state.hardware_enabled
+                && shared.state.hardware_acquired
+                && shared.state.connected == Some(true)
+                && shared.state.sample.is_some()
+                && shared
+                    .status_seen
+                    .is_some_and(|t| t.elapsed() <= Duration::from_secs(15))
+        })
+    }
+
     pub fn snapshot(&mut self) -> Physical {
         let stale = self
             .shared

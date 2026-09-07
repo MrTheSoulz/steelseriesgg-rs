@@ -7,9 +7,14 @@ struct MemoryBackend {
     snapshot: Snapshot,
     writes: usize,
     fail_after_write: bool,
+    unplug_during_snapshot: Option<Arc<Mutex<Wire>>>,
+    unplug_after_write: Option<Arc<Mutex<Wire>>>,
 }
 impl Backend for MemoryBackend {
     fn snapshot(&mut self) -> Result<Snapshot, String> {
+        if let Some(wire) = self.unplug_during_snapshot.take() {
+            unplug_and_wait(wire);
+        }
         Ok(self.snapshot.clone())
     }
     fn set_stream(
@@ -29,6 +34,9 @@ impl Backend for MemoryBackend {
         if let Some(v) = muted {
             s.muted = v;
             s.effective_muted = v;
+        }
+        if let Some(wire) = self.unplug_after_write.take() {
+            unplug_and_wait(wire);
         }
         if std::mem::take(&mut self.fail_after_write) {
             return Err("injected post-write failure".into());
@@ -172,8 +180,70 @@ fn backend() -> MemoryBackend {
         },
         writes: 0,
         fail_after_write: false,
+        ..Default::default()
     }
 }
+fn unplug_and_wait(wire: Arc<Mutex<Wire>>) {
+    wire.lock().unwrap().fail = true;
+    let until = Instant::now() + Duration::from_secs(2);
+    while wire.lock().unwrap().drops == 0 {
+        assert!(Instant::now() < until, "HID owner did not observe unplug");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    std::thread::sleep(Duration::from_millis(10));
+}
+
+fn changed_wheel_without_audio_tick(s: &mut Service<MemoryBackend>, wire: &Arc<Mutex<Wire>>) {
+    wire.lock().unwrap().reports.push_back(vec![0x45, 40, 70]);
+    let until = Instant::now() + Duration::from_secs(2);
+    loop {
+        let state = call(s, "state.get", json!({}));
+        if state["physical"]["sample"]["gamePercent"] == 40 {
+            return;
+        }
+        assert!(Instant::now() < until, "wheel sample not observed");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn disconnect_during_inventory_cancels_cached_physical_audio_writes() {
+    let dir = tempfile::tempdir().unwrap();
+    let wire = Arc::new(Mutex::new(Wire::default()));
+    let mut s = Service::with_hardware(backend(), dir.path().join("state.json"), controller(wire.clone())).unwrap();
+    call(&mut s, "stream.set", json!({"id":1,"group":"game"}));
+    call(&mut s, "device.set", json!({"id":ID,"hardwareEnabled":true}));
+    settle(&mut s, |v| v["physical"]["connected"] == true);
+    call(&mut s, "chatmix.set", json!({"inputMode":"hardware","enabled":true}));
+    changed_wheel_without_audio_tick(&mut s, &wire);
+    let writes = s.backend.writes;
+    s.backend.unplug_during_snapshot = Some(wire);
+    let _ = s.tick();
+    assert_eq!(
+        s.backend.writes, writes,
+        "cached gains written after confirmed disconnect"
+    );
+}
+
+#[test]
+fn disconnect_during_first_write_cancels_remaining_streams() {
+    let dir = tempfile::tempdir().unwrap();
+    let wire = Arc::new(Mutex::new(Wire::default()));
+    let mut s = Service::with_hardware(backend(), dir.path().join("state.json"), controller(wire.clone())).unwrap();
+    for (id, group) in [(1, "game"), (2, "chat")] {
+        call(&mut s, "stream.set", json!({"id":id,"group":group}));
+    }
+    call(&mut s, "device.set", json!({"id":ID,"hardwareEnabled":true}));
+    settle(&mut s, |v| v["physical"]["connected"] == true);
+    call(&mut s, "chatmix.set", json!({"inputMode":"hardware","enabled":true}));
+    changed_wheel_without_audio_tick(&mut s, &wire);
+    let writes = s.backend.writes;
+    s.backend.unplug_after_write = Some(wire);
+    let _ = s.tick();
+    assert_eq!(s.backend.writes, writes + 1, "second stream written after disconnect");
+    assert_eq!(s.backend.snapshot.streams[1].effective_volume, 0.8);
+}
+
 #[test]
 fn status_only_receiver_updates_physical_mix_without_unsolicited_reports() {
     let dir = tempfile::tempdir().unwrap();

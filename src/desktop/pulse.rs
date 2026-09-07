@@ -219,6 +219,16 @@ impl super::Backend for PulseBackend {
         muted: Option<bool>,
         sink: Option<u32>,
     ) -> Result<(), String> {
+        self.set_stream_guarded(id, volume, muted, sink, &|| true)
+    }
+    fn set_stream_guarded(
+        &mut self,
+        id: u32,
+        volume: Option<f64>,
+        muted: Option<bool>,
+        sink: Option<u32>,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
         // Internal restoration may exceed unity; PA_VOLUME_MAX is 0x7fff_ffff.
         if volume.is_some_and(|v| !v.is_finite() || !(0.0..=f64::from(0x7fff_ffff_u32) / 65536.0).contains(&v)) {
             return Err("invalid stream gain".into());
@@ -226,12 +236,21 @@ impl super::Backend for PulseBackend {
         let index = id;
         let id = id.to_string();
         if let Some(sink) = sink {
+            if !allowed() {
+                return Err("Physical headset unavailable; audio write cancelled".into());
+            }
             self.command(&["move-sink-input", &id, &sink.to_string()])?;
         }
         if let Some(volume) = volume {
+            if !allowed() {
+                return Err("Physical headset unavailable; audio write cancelled".into());
+            }
             self.command(&["set-sink-input-volume", &id, &format!("{:.0}", volume * 65536.0)])?;
         }
         if let Some(muted) = muted {
+            if !allowed() {
+                return Err("Physical headset unavailable; audio write cancelled".into());
+            }
             self.command(&["set-sink-input-mute", &id, if muted { "1" } else { "0" }])?;
         }
         let until = Instant::now() + Duration::from_millis(500);

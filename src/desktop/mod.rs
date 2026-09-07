@@ -44,6 +44,19 @@ pub trait Backend {
         muted: Option<bool>,
         sink: Option<u32>,
     ) -> Result<(), String>;
+    fn set_stream_guarded(
+        &mut self,
+        id: u32,
+        volume: Option<f64>,
+        muted: Option<bool>,
+        sink: Option<u32>,
+        allowed: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        if !allowed() {
+            return Err("Physical headset unavailable; audio write cancelled".into());
+        }
+        self.set_stream(id, volume, muted, sink)
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -248,6 +261,7 @@ impl<B: Backend> Service<B> {
         self.backend.begin_cycle();
         self.sync_hardware();
         self.refresh().map_err(|e| e.message)?;
+        self.sync_hardware();
         if self.hardware_dirty
             && self.mixer.enabled
             && self.mixer.input_mode == hardware::InputMode::Hardware
@@ -448,8 +462,20 @@ impl<B: Backend> Service<B> {
         g.volume * wheel
     }
     fn apply(&mut self, only: Option<u32>) -> Result<(), RpcError> {
+        let hardware_mix = self.mixer.enabled && self.mixer.input_mode == hardware::InputMode::Hardware;
+        let guard: std::sync::Arc<dyn Fn() -> bool + Send + Sync> = if hardware_mix {
+            self.hardware.audio_write_guard()
+        } else {
+            std::sync::Arc::new(|| true)
+        };
         self.armed = true;
         for stream in self.snapshot.streams.clone() {
+            if !guard() {
+                self.sync_hardware();
+                return Err(RpcError::backend(
+                    "Physical headset unavailable; remaining audio writes cancelled".into(),
+                ));
+            }
             if only.is_some_and(|id| id != stream.id)
                 || (only.is_none() && stream.group == "unmanaged" && !self.applied.contains_key(&stream.id))
             {
@@ -462,7 +488,7 @@ impl<B: Backend> Service<B> {
                     if let Some(sink) = self.snapshot.sinks.iter().find(|s| &s.name == name) {
                         if sink.id != stream.sink_id {
                             self.backend
-                                .set_stream(stream.id, None, None, Some(sink.id))
+                                .set_stream_guarded(stream.id, None, None, Some(sink.id), &*guard)
                                 .map_err(RpcError::backend)?;
                         }
                     }
@@ -494,7 +520,7 @@ impl<B: Backend> Service<B> {
             );
             if gain.is_some() || mute.is_some() {
                 self.backend
-                    .set_stream(stream.id, gain, mute, None)
+                    .set_stream_guarded(stream.id, gain, mute, None, &*guard)
                     .map_err(RpcError::backend)?;
             }
             if let Some(a) = self.applied.get_mut(&stream.id) {
