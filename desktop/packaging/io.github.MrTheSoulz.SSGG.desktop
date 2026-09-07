@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SSGG
+Comment=SteelSeries device and audio console
+Exec=ssgg-gui %U
+TryExec=ssgg-gui
+Icon=io.github.MrTheSoulz.SSGG
+StartupWMClass=io.github.MrTheSoulz.SSGG
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=SteelSeries;Arctis;ChatMix;RGB;headset;
+StartupNotify=true

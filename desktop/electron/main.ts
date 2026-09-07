@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, session } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, nativeTheme, session } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { stat, readFile, writeFile, mkdir, rename, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { connectPrivateService, assertWritable } from "./service";
+import { connectPrivateService, assertWritable, hasTrayWatcher, trayIconFilename } from "./service";
 import { ArtworkStore } from "./artwork";
 import { adaptSnapshot, toWireCommand } from "./adapter";
 import path from "node:path";
@@ -10,6 +10,16 @@ import { pathToFileURL } from "node:url";
 import { JsonLineClient } from "./rpc";
 import { assertTrustedFrame, resolveSidecar, isLocalAsset } from "./security";
 import { snapshotSchema, identifier, validateCommand, type Snapshot, type RuntimeInfo } from "../src/shared/contracts";
+const APP_ID = "io.github.MrTheSoulz.SSGG";
+app.setName("SSGG");
+if (process.platform === "linux") app.setDesktopName(`${APP_ID}.desktop`);
+if (app.isPackaged && process.getuid?.() === 0) {
+  console.error("Run SSGG as your desktop user, never as root.");
+  app.exit(1);
+}
+const brandingPath = app.isPackaged
+  ? path.join(process.resourcesPath, "branding")
+  : path.join(app.getAppPath(), "assets/branding");
 let window: BrowserWindow | null = null;
 let child: ChildProcessWithoutNullStreams | null = null;
 let rpc: JsonLineClient | null = null;
@@ -33,6 +43,22 @@ if (runtime.testMode && process.env.SSGG_TEST_USER_DATA && path.isAbsolute(proce
   app.setPath("userData", process.env.SSGG_TEST_USER_DATA);
 const rendererPath = path.join(__dirname, "../dist/index.html");
 const rendererURL = pathToFileURL(rendererPath).href;
+// Inspection must not focus a writable instance in place of starting safely.
+if (runtime.readOnly) app.setPath("userData", path.join(app.getPath("userData"), "inspection"));
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on("second-instance", () => {
+  if (!window) return;
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+});
+async function refreshTrayAvailability() {
+  runtime.trayAvailable = !!tray && (process.platform !== "linux" || (await hasTrayWatcher()));
+  if (!runtime.trayAvailable) {
+    runtime.closeToTray = false;
+    if (window && !window.isVisible()) window.show();
+  }
+}
 async function startSidecar() {
   let diagnostics = "";
   try {
@@ -150,6 +176,7 @@ function createWindow() {
     minHeight: 680,
     backgroundColor: "#edf0f2",
     title: "SSGG",
+    icon: path.join(brandingPath, "ssgg.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -166,7 +193,11 @@ function createWindow() {
   window.on("close", (event) => {
     if (!quitting && runtime.closeToTray && tray) {
       event.preventDefault();
-      window?.hide();
+      // Watchers can disappear after enabling the preference (GNOME extension disabled).
+      void refreshTrayAvailability().then(() => {
+        if (runtime.trayAvailable && runtime.closeToTray) window?.hide();
+        else window?.close();
+      });
     }
   });
   window.on("closed", () => {
@@ -214,6 +245,7 @@ app.whenReady().then(async () => {
   }
   handle("ssgg:close-to-tray", async (enabled) => {
     validateCommand("settings.set", { closeToTray: enabled });
+    await refreshTrayAvailability();
     if (enabled && !runtime.trayAvailable) throw new Error("Your desktop does not provide a tray.");
     await mkdir(app.getPath("userData"), { recursive: true, mode: 0o700 });
     await writeFile(preferencesPath + ".tmp", JSON.stringify({ closeToTray: enabled }), { mode: 0o600 });
@@ -249,16 +281,12 @@ app.whenReady().then(async () => {
       await rpc.request(method, valid);
     });
   try {
-    const pixels = Buffer.alloc(32 * 32 * 4);
-    for (let y = 5; y < 27; y++)
-      for (let x = 5; x < 27; x++) {
-        const i = (y * 32 + x) * 4;
-        pixels[i] = 37;
-        pixels[i + 1] = 168;
-        pixels[i + 2] = 150;
-        pixels[i + 3] = x < 10 || x > 21 || y < 10 || y > 21 ? 255 : 0;
-      }
-    tray = new Tray(nativeImage.createFromBitmap(pixels, { width: 32, height: 32 }));
+    const trayImage = () =>
+      nativeImage.createFromPath(path.join(brandingPath, trayIconFilename(nativeTheme.shouldUseDarkColors)));
+    const image = trayImage();
+    if (image.isEmpty()) throw new Error("Missing tray branding");
+    tray = new Tray(image);
+    nativeTheme.on("updated", () => tray?.setImage(trayImage()));
     tray.setToolTip("SSGG — device & audio console");
     tray.setContextMenu(
       Menu.buildFromTemplate([
@@ -274,11 +302,13 @@ app.whenReady().then(async () => {
       ]),
     );
     tray.on("click", () => window?.show());
-    runtime.trayAvailable = true;
+    await refreshTrayAvailability();
   } catch {
     runtime.trayAvailable = false;
   }
   createWindow();
+  const trayMonitor = setInterval(() => void refreshTrayAvailability(), 5000);
+  trayMonitor.unref();
 });
 app.on("window-all-closed", () => app.quit());
 app.on("before-quit", () => {

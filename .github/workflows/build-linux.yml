@@ -1,6 +1,8 @@
-name: Build Linux / Arch
+name: Build Linux packages
 
 on:
+  push:
+    branches: [feat/install-and-use, feat/ubuntu-packaging]
   workflow_dispatch:
     inputs:
       features:
@@ -12,6 +14,79 @@ permissions:
   contents: read
 
 jobs:
+  ubuntu-desktop:
+    name: Ubuntu 24.04 desktop amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install build and isolated test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libudev-dev libpulse-dev unzip binutils apparmor desktop-file-utils xvfb xauth x11-utils dbus-x11
+      - name: Install locked JavaScript dependencies
+        working-directory: desktop
+        run: npm ci --include=dev
+      - name: Unit and native safety gates
+        run: |
+          cargo test --locked --test desktop_hardware --test desktop_review
+          cargo clippy --all-targets --locked -- -D warnings
+          cd desktop
+          npm run typecheck
+          npm test
+          npm run test:packaging
+      - name: Build real self-contained app and Debian archive
+        working-directory: desktop
+        run: |
+          npm run package:deb -- --max-glibc 2.39
+          tar -C release -cJf release/ssgg-gui-linux-amd64.tar.xz app
+          cd release
+          sha256sum ssgg-gui-linux-amd64.tar.xz > ssgg-gui-linux-amd64.tar.xz.sha256
+      - name: Install the package on the disposable Ubuntu runner
+        run: |
+          sudo apt-get install -y ./desktop/release/ssgg-gui_*_amd64.deb
+          test "$(stat -c '%U:%G:%a' /opt/ssgg/chrome-sandbox)" = root:root:4755
+          desktop-file-validate /usr/share/applications/io.github.MrTheSoulz.SSGG.desktop
+          ldd /opt/ssgg/ssgg-gui
+          ldd /opt/ssgg/resources/ssgg-desktop
+          test -x /usr/bin/pactl
+          for package in "$PWD"/desktop/release/*.deb; do
+            node desktop/scripts/verify-deb.mjs "$package" --runtime
+          done
+      - name: Exercise the installed launcher without sandbox exceptions
+        working-directory: desktop
+        run: |
+          unset CHROME_DEVEL_SANDBOX ELECTRON_RUN_AS_NODE
+          node scripts/test-session.mjs node tests/packaged-smoke.mjs /usr/bin/ssgg-gui artifacts/ubuntu-installed.json
+      - name: Remove package without touching user state or legacy services
+        run: |
+          mkdir -p "$HOME/.config/ssgg-desktop"
+          printf 'package-removal-sentinel\n' > "$HOME/.config/ssgg-desktop/keep-test"
+          sudo apt-get purge -y ssgg-gui
+          test -f "$HOME/.config/ssgg-desktop/keep-test"
+          test ! -e /opt/ssgg/ssgg-gui
+          test ! -e /usr/share/applications/io.github.MrTheSoulz.SSGG.desktop
+          test ! -e /usr/lib/udev/rules.d/70-ssgg.rules
+          test ! -e /etc/apparmor.d/io.github.MrTheSoulz.SSGG
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ssgg-ubuntu-24.04-amd64
+          path: |
+            desktop/release/*.deb
+            desktop/release/*.sha256
+            desktop/release/*.tar.xz
+            desktop/artifacts/ubuntu-installed.json
+          if-no-files-found: error
+          retention-days: 30
   build-linux:
     name: Build Linux / Arch x86_64
     runs-on: ubuntu-latest
