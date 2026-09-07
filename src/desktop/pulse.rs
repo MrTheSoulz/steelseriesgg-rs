@@ -18,7 +18,9 @@ fn volume(v: &Value) -> Result<f64, String> {
     for channel in channels.values() {
         sum += channel["value"].as_f64().ok_or("invalid Pulse volume")? / 65536.0;
     }
-    Ok((sum / channels.len() as f64).clamp(0.0, 1.0))
+    // Pulse permits amplification above unity; clipping inventory would hide
+    // a required write when the user explicitly requests 100%.
+    Ok(sum / channels.len() as f64)
 }
 pub fn parse_snapshot(inputs: Value, sinks: Value) -> Result<Snapshot, String> {
     let streams = inputs
@@ -217,7 +219,8 @@ impl super::Backend for PulseBackend {
         muted: Option<bool>,
         sink: Option<u32>,
     ) -> Result<(), String> {
-        if volume.is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v)) {
+        // Internal restoration may exceed unity; PA_VOLUME_MAX is 0x7fff_ffff.
+        if volume.is_some_and(|v| !v.is_finite() || !(0.0..=f64::from(0x7fff_ffff_u32) / 65536.0).contains(&v)) {
             return Err("invalid stream gain".into());
         }
         let index = id;

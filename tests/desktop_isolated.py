@@ -117,6 +117,23 @@ def run():
             state = rpc("state.get")
             assert len(state["streams"]) == 1 and len(state["sinks"]) == 2, state
             stream_id = state["streams"][0]["id"]
+            pa("set-sink-input-volume", str(stream_id), "98304")
+            rpc("stream.set", {"id": stream_id, "group": "game"})
+            actual = json.loads(pa("-f", "json", "list", "sink-inputs"))[0]
+            assert abs(next(iter(actual["volume"].values()))["value"] / 65536 - 1.5) < 0.001, actual
+            rpc("chatmix.set", {"enabled": True, "balance": 0.5})
+            actual = json.loads(pa("-f", "json", "list", "sink-inputs"))[0]
+            assert abs(next(iter(actual["volume"].values()))["value"] / 65536 - 0.75) < 0.001, actual
+            managed = rpc("streams.list")[0]
+            assert abs(managed["volume"] - 1.5) < 0.001, managed
+            assert abs(managed["effectiveVolume"] - 0.75) < 0.001, managed
+            rpc("chatmix.set", {"enabled": False})
+            actual = json.loads(pa("-f", "json", "list", "sink-inputs"))[0]
+            assert abs(next(iter(actual["volume"].values()))["value"] / 65536 - 1.5) < 0.001, actual
+            pa("set-sink-input-volume", str(stream_id), "98304")
+            rpc("stream.set", {"id": stream_id, "volume": 1.0})
+            actual = json.loads(pa("-f", "json", "list", "sink-inputs"))[0]
+            assert abs(next(iter(actual["volume"].values()))["value"] / 65536 - 1.0) < 0.001, actual
             b_id = next(s["id"] for s in state["sinks"] if s["name"] == "test_b")
             rpc("stream.set", {"id": stream_id, "group": "game", "volume": 0.8, "sinkId": b_id})
             actual = json.loads(pa("-f", "json", "list", "sink-inputs"))[0]
@@ -146,7 +163,7 @@ def run():
             wait(restored)
             sidecar.stdin.close()
             assert sidecar.wait(timeout=4) == 0
-            print(json.dumps({"result": "passed", "backend": "isolated PipeWire-Pulse", "sinks": 2, "tested": ["read-only inventory", "per-stream gain", "routing", "mute", "group mute", "noncompounding chatmix", "external gain preservation", "profiles", "restarted-app restore"], "host_audio_mutated": False}))
+            print(json.dumps({"result": "passed", "backend": "isolated PipeWire-Pulse", "sinks": 2, "tested": ["read-only inventory", "per-stream gain", "native 150% group-only mix 75% disable restore 150%", "native 150% to 100%", "routing", "mute", "group mute", "noncompounding chatmix", "external gain preservation", "profiles", "restarted-app restore"], "host_audio_mutated": False}))
         except BaseException:
             logs.flush()
             logs.seek(0)

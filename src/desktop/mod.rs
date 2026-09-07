@@ -153,6 +153,10 @@ struct Applied {
     expected: f64,
     expected_mute: bool,
     factor: f64,
+    // Err may follow a successful volume write. Until retry, actual state is
+    // not an external edit and must not replace the requested base intent.
+    #[serde(default)]
+    pending: bool,
 }
 pub struct Service<B: Backend> {
     pub backend: B,
@@ -230,26 +234,22 @@ impl<B: Backend> Service<B> {
     pub fn tick(&mut self) -> Result<(), String> {
         self.backend.begin_cycle();
         self.refresh().map_err(|e| e.message)?;
-        self.applied
-            .retain(|id, a| self.snapshot.streams.iter().any(|s| s.id == *id && s.app_key == a.key));
         if !self.armed {
             return Ok(());
         }
         let mut changed = false;
         for i in 0..self.snapshot.streams.len() {
             let stream = &self.snapshot.streams[i];
+            if self.applied.get(&stream.id).is_some_and(|a| a.pending) {
+                self.apply(Some(stream.id)).map_err(|e| e.message)?;
+                changed = true;
+                continue;
+            }
             if self.applied.contains_key(&stream.id) {
                 continue;
             }
-            if let Some(a) = self.assignments.get(&stream.app_key).cloned() {
+            if self.assignments.contains_key(&stream.app_key) {
                 let id = stream.id;
-                if let Some(name) = &a.sink {
-                    if let Some(sink) = self.snapshot.sinks.iter().find(|s| &s.name == name) {
-                        self.backend.set_stream(id, None, None, Some(sink.id))?;
-                    }
-                }
-                self.snapshot.streams[i].volume = a.volume;
-                self.snapshot.streams[i].muted = a.muted;
                 self.apply(Some(id)).map_err(|e| e.message)?;
                 changed = true;
             }
@@ -315,19 +315,25 @@ impl<B: Backend> Service<B> {
             Ok(snapshot) => snapshot,
             Err(e) => {
                 self.snapshot = Snapshot::default();
-                self.applied.clear();
+                // A failed inventory is not evidence that our effective gains disappeared.
+                // Retire tracking only after a successful snapshot proves the stream is gone.
                 self.armed = false;
                 self.mixer.enabled = false;
                 return Err(RpcError::backend(e));
             }
         };
+        self.applied
+            .retain(|id, a| self.snapshot.streams.iter().any(|s| s.id == *id && s.app_key == a.key));
+        let mut external_edits = Vec::new();
         for stream in &mut self.snapshot.streams {
             if let Some(a) = self.assignments.get(&stream.app_key) {
                 stream.group = a.group.clone();
             }
             if let Some(a) = self.applied.get_mut(&stream.id) {
                 if a.key == stream.app_key {
-                    if (stream.effective_volume - a.expected).abs() >= 0.0001 {
+                    let volume_changed = !a.pending && (stream.effective_volume - a.expected).abs() >= 0.0001;
+                    let mute_changed = !a.pending && stream.muted != a.expected_mute;
+                    if volume_changed {
                         a.base = if a.factor > 0.0 {
                             (stream.effective_volume / a.factor).clamp(0.0, 1.0)
                         } else {
@@ -335,16 +341,44 @@ impl<B: Backend> Service<B> {
                         };
                         a.expected = stream.effective_volume;
                     }
-                    if stream.muted != a.expected_mute {
+                    if mute_changed {
                         a.base_mute = stream.muted;
                         a.expected_mute = stream.muted;
                     }
                     stream.volume = a.base;
                     stream.muted = a.base_mute;
-                    if let Some(assignment) = self.assignments.get_mut(&stream.app_key) {
-                        assignment.volume = a.base;
-                        assignment.muted = a.base_mute;
+                    if volume_changed || mute_changed {
+                        external_edits.push((
+                            stream.app_key.clone(),
+                            volume_changed.then_some(a.base),
+                            mute_changed.then_some(a.base_mute),
+                        ));
                     }
+                }
+            }
+        }
+        // Explicit stream.set owns the app default. Only a newly observed,
+        // unambiguous external edit can supersede it, never unchanged siblings
+        // or mixing. Conflicting simultaneous edits keep the previous default.
+        for (key, assignment) in &mut self.assignments {
+            let mut volumes = external_edits.iter().filter(|e| &e.0 == key).filter_map(|e| e.1);
+            if let Some(v) = volumes.next() {
+                if volumes.all(|other| other == v) {
+                    assignment.volume = v;
+                }
+            }
+            let mut mutes = external_edits.iter().filter(|e| &e.0 == key).filter_map(|e| e.2);
+            if let Some(m) = mutes.next() {
+                if mutes.all(|other| other == m) {
+                    assignment.muted = m;
+                }
+            }
+        }
+        for stream in &mut self.snapshot.streams {
+            if !self.applied.contains_key(&stream.id) {
+                if let Some(a) = self.assignments.get(&stream.app_key) {
+                    stream.volume = a.volume;
+                    stream.muted = a.muted;
                 }
             }
         }
@@ -373,6 +407,19 @@ impl<B: Backend> Service<B> {
             {
                 continue;
             }
+            // New stream restoration is shared by tick and explicit mutations.
+            // Leave it untracked on a route failure so either path can retry.
+            if !self.applied.contains_key(&stream.id) {
+                if let Some(name) = self.assignments.get(&stream.app_key).and_then(|a| a.sink.as_ref()) {
+                    if let Some(sink) = self.snapshot.sinks.iter().find(|s| &s.name == name) {
+                        if sink.id != stream.sink_id {
+                            self.backend
+                                .set_stream(stream.id, None, None, Some(sink.id))
+                                .map_err(RpcError::backend)?;
+                        }
+                    }
+                }
+            }
             let volume = stream.volume * self.factor(&stream.group);
             let muted = stream.muted || self.groups.iter().any(|g| g.id == stream.group && g.muted);
             let gain = if (volume - stream.effective_volume).abs() >= 0.0001 {
@@ -385,15 +432,6 @@ impl<B: Backend> Service<B> {
             } else {
                 None
             };
-            if gain.is_some() || mute.is_some() {
-                self.backend
-                    .set_stream(stream.id, gain, mute, None)
-                    .map_err(RpcError::backend)?;
-            }
-            if let Some(a) = self.assignments.get_mut(&stream.app_key) {
-                a.volume = stream.volume;
-                a.muted = stream.muted;
-            }
             self.applied.insert(
                 stream.id,
                 Applied {
@@ -403,8 +441,17 @@ impl<B: Backend> Service<B> {
                     base_mute: stream.muted,
                     expected: volume,
                     expected_mute: muted,
+                    pending: true,
                 },
             );
+            if gain.is_some() || mute.is_some() {
+                self.backend
+                    .set_stream(stream.id, gain, mute, None)
+                    .map_err(RpcError::backend)?;
+            }
+            if let Some(a) = self.applied.get_mut(&stream.id) {
+                a.pending = false;
+            }
         }
         Ok(())
     }
