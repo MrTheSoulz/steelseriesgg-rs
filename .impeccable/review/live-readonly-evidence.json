@@ -1,0 +1,98 @@
+{
+  "mode": "Real Rust sidecar --stdio --safe-mode. Inventory only, no audio/HID mutation requests.",
+  "electron": "44.2.0",
+  "sandbox": true,
+  "state": {
+    "streams": [
+      {
+        "id": "3830",
+        "appKey": "[\"Discord\",\"WEBRTC VoiceEngine\",\"\"]",
+        "name": "playStream",
+        "appName": "WEBRTC VoiceEngine",
+        "volume": 1,
+        "muted": false,
+        "group": "unmanaged",
+        "sinkId": 3798
+      }
+    ],
+    "groups": [
+      {
+        "id": "game",
+        "name": "Game",
+        "volume": 1,
+        "muted": false,
+        "wheelSide": "a"
+      },
+      {
+        "id": "chat",
+        "name": "Chat",
+        "volume": 1,
+        "muted": false,
+        "wheelSide": "b"
+      },
+      {
+        "id": "media",
+        "name": "Media",
+        "volume": 1,
+        "muted": false,
+        "wheelSide": "none"
+      }
+    ],
+    "devices": [
+      {
+        "id": "1038:227e:",
+        "name": "Arctis Nova 7 Gen 2",
+        "vendorId": 4152,
+        "productId": 8830,
+        "connected": true,
+        "kind": "headset",
+        "battery": null,
+        "capabilities": {
+          "autoOff": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "battery": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "hardwareEq": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "micMute": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "micVolume": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "physicalChatmix": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "rgb": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          },
+          "sidetone": {
+            "supported": false,
+            "reason": "Hardware acquisition is not enabled in this service; no HID commands were sent"
+          }
+        }
+      }
+    ],
+    "chatmix": {
+      "balance": 0,
+      "enabled": false,
+      "wheelAvailable": false,
+      "reason": "The local service has not exposed verified physical-wheel input."
+    },
+    "audio": {
+      "available": true
+    },
+    "profiles": [],
+    "readOnly": true
+  }
+}

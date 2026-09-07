@@ -1,0 +1,92 @@
+{
+  "streams": [
+    {
+      "id": "101",
+      "appKey": "google-chrome",
+      "name": "YouTube Music",
+      "appName": "Google Chrome",
+      "volume": 0.72,
+      "muted": false,
+      "group": "media",
+      "sinkId": "51"
+    },
+    {
+      "id": "102",
+      "appKey": "discord",
+      "name": "Voice channel",
+      "appName": "Discord",
+      "volume": 0.85,
+      "muted": false,
+      "group": "chat",
+      "sinkId": "51"
+    },
+    {
+      "id": "103",
+      "appKey": "org.gnome.Music",
+      "name": "Music",
+      "appName": "Music",
+      "volume": 0.6,
+      "muted": true,
+      "group": "unmanaged",
+      "sinkId": "51"
+    }
+  ],
+  "groups": [
+    {
+      "id": "game",
+      "name": "Game",
+      "volume": 1,
+      "muted": false,
+      "wheelSide": "none"
+    },
+    {
+      "id": "chat",
+      "name": "Chat",
+      "volume": 0.9,
+      "muted": false,
+      "wheelSide": "b"
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "volume": 0.8,
+      "muted": false,
+      "wheelSide": "a"
+    }
+  ],
+  "devices": [
+    {
+      "id": "test-nova7-gen2",
+      "name": "Arctis Nova 7 Gen 2",
+      "vendorId": 4152,
+      "productId": 8830,
+      "connected": true,
+      "kind": "headset",
+      "battery": null,
+      "capabilities": {
+        "rgb": {
+          "supported": false,
+          "reason": "This headset has no supported RGB lighting controls."
+        },
+        "equalizer": {
+          "supported": false,
+          "reason": "Gen 2 EQ commands have not been verified on hardware."
+        },
+        "microphone": {
+          "supported": false,
+          "reason": "Microphone control is not exposed by this service."
+        }
+      }
+    }
+  ],
+  "chatmix": {
+    "balance": 0,
+    "enabled": false,
+    "wheelAvailable": false,
+    "reason": "Gen 2 physical wheel input has not been verified on hardware."
+  },
+  "audio": {
+    "available": true
+  },
+  "profiles": []
+}
