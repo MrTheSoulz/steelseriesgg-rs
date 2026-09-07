@@ -6,6 +6,7 @@ use steelseries_gg::desktop::{Backend, Service, Snapshot};
 struct MemoryBackend {
     snapshot: Snapshot,
     writes: usize,
+    fail_after_write: bool,
 }
 impl Backend for MemoryBackend {
     fn snapshot(&mut self) -> Result<Snapshot, String> {
@@ -28,6 +29,9 @@ impl Backend for MemoryBackend {
         if let Some(v) = muted {
             s.muted = v;
             s.effective_muted = v;
+        }
+        if std::mem::take(&mut self.fail_after_write) {
+            return Err("injected post-write failure".into());
         }
         Ok(())
     }
@@ -160,6 +164,7 @@ fn backend() -> MemoryBackend {
             ..Default::default()
         },
         writes: 0,
+        fail_after_write: false,
     }
 }
 #[test]
@@ -437,6 +442,33 @@ fn stalled_hid_query_does_not_block_rpc_and_safe_mode_cancels_queued_writes() {
     let w = wire.lock().unwrap();
     assert_eq!(w.drops, 1);
     assert_eq!(w.writes, vec![vec![0, 0xb0]]);
+}
+
+#[test]
+fn physical_two_gain_retry_preserves_base_after_partial_backend_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let wire = Arc::new(Mutex::new(Wire::default()));
+    let mut s = Service::with_hardware(backend(), dir.path().join("state.json"), controller(wire.clone())).unwrap();
+    for (id, group) in [(1, "game"), (2, "chat")] {
+        call(&mut s, "stream.set", json!({"id":id,"group":group}));
+    }
+    call(&mut s, "device.set", json!({"id":ID,"hardwareEnabled":true}));
+    settle(&mut s, |v| v["physical"]["connected"] == true);
+    call(&mut s, "chatmix.set", json!({"inputMode":"hardware","enabled":true}));
+    wire.lock().unwrap().reports.push_back(vec![0x45, 40, 70]);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while call(&mut s, "state.get", json!({}))["physical"]["sample"]["gamePercent"] != 40 {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    s.backend.fail_after_write = true;
+    assert!(s.tick().is_err());
+    s.tick().unwrap();
+    let state = call(&mut s, "state.get", json!({}));
+    assert!((state["streams"][0]["effectiveVolume"].as_f64().unwrap() - 0.32).abs() < 0.0001);
+    assert!((state["streams"][1]["effectiveVolume"].as_f64().unwrap() - 0.56).abs() < 0.0001);
+    assert_eq!(state["streams"][0]["volume"], 0.8);
+    assert_eq!(state["streams"][1]["volume"], 0.8);
 }
 
 #[test]
