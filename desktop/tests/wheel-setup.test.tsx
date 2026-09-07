@@ -64,6 +64,13 @@ function setup() {
   };
   return { state, bridge, commands, fresh };
 }
+
+async function readyButton(name = "Use headset wheel") {
+  const control = await screen.findByRole("button", { name });
+  await waitFor(() => expect(control).toBeEnabled());
+  return control;
+}
+
 afterEach(() => {
   cleanup();
   delete window.ssgg;
@@ -75,14 +82,14 @@ it("selects already-acquired hardware in one action and discloses the live posit
   fresh();
   state.chatmix.enabled = true;
   render(<App />);
-  const button = await screen.findByRole("button", { name: "Use headset wheel" });
+  const button = await readyButton();
   expect(screen.getByText(/selecting the wheel immediately uses its current position/)).toBeVisible();
   expect(bridge.setChatmix).not.toHaveBeenCalled();
   fireEvent.click(button);
   expect(await screen.findByText("Headset wheel active")).toBeVisible();
   expect(bridge.setDevice).not.toHaveBeenCalled();
   expect(bridge.setChatmix).toHaveBeenCalledExactlyOnceWith({ inputMode: "hardware" });
-  fireEvent.click(screen.getByRole("button", { name: "Use on-screen balance" }));
+  fireEvent.click(await readyButton("Use on-screen balance"));
   await waitFor(() => expect(state.chatmix.inputMode).toBe("software"));
   expect(state.chatmix.enabled).toBe(true);
 });
@@ -94,7 +101,7 @@ it("waits for an already-acquired receiver without reacquiring it", async () => 
   state.physical!.pending = true;
   state.chatmix.wheelAvailable = false;
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Use headset wheel" }));
+  fireEvent.click(await readyButton());
   await act(async () => {});
   expect(bridge.setDevice).not.toHaveBeenCalled();
   expect(bridge.setChatmix).not.toHaveBeenCalled();
@@ -168,8 +175,13 @@ it.each(["failed", "offline", "service lost", "USB lost", "support lost", "read-
   "keeps input unchanged when setup reports %s, retaining the error across refresh",
   async (failure) => {
     const { bridge, state, fresh } = setup();
+    const runtime = vi.mocked(bridge.getRuntime).getMockImplementation()!;
+    vi.mocked(bridge.getRuntime).mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return runtime();
+    });
     render(<App />);
-    const button = await screen.findByRole("button", { name: "Use headset wheel" });
+    const button = await readyButton();
     if (failure === "failed") vi.mocked(bridge.setDevice).mockRejectedValue(new Error("USB permission denied"));
     else
       vi.mocked(bridge.setDevice).mockImplementation(async () => {
@@ -183,8 +195,12 @@ it.each(["failed", "offline", "service lost", "USB lost", "support lost", "read-
     fireEvent.click(button);
     await waitFor(() => expect(screen.getAllByRole("alert").length).toBeGreaterThan(0));
     expect(bridge.setChatmix).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Refresh audio and devices" }));
-    await act(async () => {});
+    vi.mocked(bridge.getRuntime).mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return runtime();
+    });
+    fireEvent.click(await readyButton("Refresh audio and devices"));
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
     expect(screen.getByRole("alert")).toBeVisible();
     expect(bridge.setDevice).toHaveBeenCalledTimes(1);
     expect(bridge.setChatmix).not.toHaveBeenCalled();
@@ -254,7 +270,7 @@ it.each(["wrong device", "stale", "no sample", "pending"])(
 it("does not send the source command if ChatMix becomes enabled during connection", async () => {
   const { bridge, state, fresh } = setup();
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Use headset wheel" }));
+  fireEvent.click(await readyButton());
   await act(async () => {});
   fresh();
   state.chatmix.enabled = true;
@@ -267,7 +283,7 @@ it("does not repeat the obsolete Devices prerequisite beside the in-Mixer action
   state.chatmix.reason =
     "Enable hardware in Devices, then move the wheel. Hardware acquisition does not enable ChatMix.";
   render(<App />);
-  await screen.findByRole("button", { name: "Use headset wheel" });
+  await readyButton();
   expect(screen.queryByText(/Enable hardware in Devices/)).not.toBeInTheDocument();
 });
 
@@ -288,8 +304,8 @@ it("recovers only on explicit retry after a failed acquisition", async () => {
   const { bridge, fresh } = setup();
   vi.mocked(bridge.setDevice).mockRejectedValueOnce(new Error("USB permission denied"));
   render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: "Use headset wheel" }));
-  const retry = await screen.findByRole("button", { name: "Retry headset wheel" });
+  fireEvent.click(await readyButton());
+  const retry = await readyButton("Retry headset wheel");
   expect(bridge.setChatmix).not.toHaveBeenCalled();
   vi.mocked(bridge.setDevice).mockImplementation(async () => fresh());
   fireEvent.click(retry);
@@ -330,7 +346,7 @@ it.each(["read rejected", "source rejected", "source unconfirmed"])(
     const { bridge, fresh } = setup();
     fresh();
     render(<App />);
-    const button = await screen.findByRole("button", { name: "Use headset wheel" });
+    const button = await readyButton();
     if (failure === "read rejected")
       vi.mocked(bridge.getState).mockRejectedValueOnce(new Error("Service disconnected"));
     if (failure === "source rejected")
@@ -350,7 +366,7 @@ it("offers wheel setup in the default Mixer and acquires → confirms a fresh sa
   const { bridge, state, commands, fresh } = setup();
   const assignments = structuredClone(state.streams);
   render(<App />);
-  const button = await screen.findByRole("button", { name: "Use headset wheel" });
+  const button = await readyButton();
   expect(button).toBeEnabled();
   expect(bridge.setDevice).not.toHaveBeenCalled();
   expect(bridge.setChatmix).not.toHaveBeenCalled();
