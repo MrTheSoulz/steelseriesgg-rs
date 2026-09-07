@@ -333,6 +333,17 @@ fn accept(shared: &Mutex<Shared>, report: Report) -> Result<(), String> {
     }
     Ok(())
 }
+impl Drop for Controller {
+    fn drop(&mut self) {
+        self.stop();
+        if let Some(owner) = self.owner.take() {
+            if owner.join.join().is_err() {
+                eprintln!("desktop HID owner panicked during shutdown");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,16 +379,5 @@ mod tests {
         assert!(state.stale);
         assert!(!state.hardware_enabled);
         assert!(state.connected.is_none());
-    }
-}
-
-impl Drop for Controller {
-    fn drop(&mut self) {
-        self.stop();
-        if let Some(owner) = self.owner.take() {
-            if owner.join.join().is_err() {
-                eprintln!("desktop HID owner panicked during shutdown");
-            }
-        }
     }
 }
