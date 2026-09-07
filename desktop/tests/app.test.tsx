@@ -54,7 +54,7 @@ it("shows the exact connected model and honest unsupported device controls", asy
   await screen.findByRole("combobox", { name: "Google Chrome group" });
   fireEvent.click(screen.getByRole("button", { name: "Devices" }));
   expect(await screen.findByRole("heading", { name: "Arctis Nova 7 Gen 2" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "RGB lighting" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "RGB lighting" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Hardware equalizer" })).toBeDisabled();
   expect(screen.getByText("Battery unavailable")).toBeVisible();
   expect(screen.getByRole("button", { name: "Download official photo" })).toBeEnabled();
