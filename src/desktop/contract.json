@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "transport": "JSON-lines stdio: ssgg-desktop --stdio; Unix socket default $XDG_RUNTIME_DIR/ssgg-desktop/service.sock; request {id,method,params}; response {id,result} or {id,error:{code,message}}. Replies only, no unsolicited events. Poll state.get.",
+  "state.get": {
+    "params": {},
+    "result": {
+      "streams": [
+        {
+          "id": 12,
+          "appKey": "[\"firefox\",\"Firefox\",\"music\"]",
+          "name": "AudioStream",
+          "appName": "Firefox",
+          "volume": 0.8,
+          "effectiveVolume": 0.8,
+          "muted": false,
+          "group": "unmanaged",
+          "sinkId": 52,
+          "effectiveMuted": false
+        }
+      ],
+      "sinks": [
+        {
+          "id": 52,
+          "name": "alsa_output.example",
+          "description": "Headphones",
+          "volume": 0.8,
+          "muted": false
+        }
+      ],
+      "groups": [
+        {
+          "id": "game",
+          "name": "Game",
+          "volume": 1.0,
+          "muted": false,
+          "wheelSide": "a"
+        },
+        {
+          "id": "chat",
+          "name": "Chat",
+          "volume": 1.0,
+          "muted": false,
+          "wheelSide": "b"
+        },
+        {
+          "id": "media",
+          "name": "Media",
+          "volume": 1.0,
+          "muted": false,
+          "wheelSide": "none"
+        }
+      ],
+      "mixer": {
+        "balance": 0.0,
+        "enabled": false
+      },
+      "settings": {
+        "startMinimized": false,
+        "closeToTray": true
+      },
+      "profiles": [],
+      "devices": [],
+      "backend": {
+        "connected": true,
+        "name": "PulseAudio / PipeWire-Pulse",
+        "error": null
+      }
+    }
+  },
+  "streams.list": {
+    "params": {},
+    "result": "Stream[]"
+  },
+  "stream.set": {
+    "params": {
+      "id": 12,
+      "volume": "optional number 0..1, base gain not attenuated",
+      "muted": "optional boolean",
+      "group": "optional game|chat|media|unmanaged",
+      "sinkId": "optional numeric sink id"
+    },
+    "result": "full state"
+  },
+  "group.set": {
+    "params": {
+      "id": "game|chat|media",
+      "volume": "optional number 0..1",
+      "muted": "optional bool",
+      "wheelSide": "optional a|b|none"
+    },
+    "result": "full state"
+  },
+  "chatmix.set": {
+    "params": {
+      "balance": "optional number -1..1; positive favors b/chat",
+      "enabled": "optional boolean"
+    },
+    "result": "full state"
+  },
+  "settings.get": {
+    "params": {},
+    "result": {
+      "startMinimized": false,
+      "closeToTray": true
+    }
+  },
+  "settings.set": {
+    "params": {
+      "startMinimized": "optional boolean",
+      "closeToTray": "optional boolean"
+    },
+    "result": "settings"
+  },
+  "profiles.list": {
+    "params": {},
+    "result": [
+      {
+        "name": "Example"
+      }
+    ]
+  },
+  "profiles.save": {
+    "params": {
+      "name": "nonempty string max 80"
+    },
+    "result": "profile list"
+  },
+  "profiles.apply": {
+    "params": {
+      "name": "saved name"
+    },
+    "result": "full state; explicit user mutation"
+  },
+  "devices.list": {
+    "params": {},
+    "result": [
+      {
+        "id": "1038:227e:usb",
+        "name": "Arctis Nova 7 Gen 2",
+        "vendorId": 4152,
+        "productId": 8830,
+        "connected": true,
+        "kind": "headset",
+        "battery": null,
+        "artworkKey": "arctis-nova-7-gen-2",
+        "hardwareAcquired": false,
+        "capabilities": {
+          "battery": {
+            "supported": false,
+            "reason": "Hardware acquisition not enabled"
+          },
+          "physicalChatmix": {
+            "supported": false,
+            "reason": "Hardware acquisition not enabled"
+          }
+        }
+      }
+    ]
+  },
+  "device.set": {
+    "params": {},
+    "result": "explicit UNSUPPORTED until hardware integration"
+  },
+  "errors": [
+    "INVALID_REQUEST",
+    "INVALID_PARAMS",
+    "NOT_FOUND",
+    "BACKEND_UNAVAILABLE",
+    "UNSUPPORTED",
+    "IO_ERROR",
+    "BUSY"
+  ],
+  "safety": "No opening/reading/config-loading audio mutations. Default mixer disabled every process start. User mutation arms session reapply for restarted assigned apps; group wheelSide none and unmanaged excluded. Config isolated in $XDG_CONFIG_HOME/ssgg-desktop/state.json. No capture/microphone/HID operations. pactl required at runtime.",
+  "notes": [
+    "IDs are u32 numbers at RPC boundary (not renderer display strings).",
+    "state.get keys are mixer/backend, not chatmix/audio.",
+    "Stream volume/muted are base intent; effectiveVolume/effectiveMuted report actual Pulse state.",
+    "Disconnect clears stale inventory and disarms reapply; user must reactivate after reconnect.",
+    "Groups are logical per-app controls, not automatically created null buses.",
+    "Device inventory uses HID enumeration only; device.set explicitly UNSUPPORTED. Dedicated hardware module must be integrated separately; no hardware commit cherry-picked.",
+    "--safe-mode denies audio/HID mutation RPC, while settings/profiles.save remain usable.",
+    "Unix daemon survives GUI disconnect; --stdio ends at stdin EOF. No automatic gain restoration on exit; saved per-stream gain tracking prevents compounding on service restart.",
+    "Bounded: 64 KiB input line; 16 pending RPCs; 8 socket clients; 1s queue expiry; 3s per pactl command; 8s aggregate cycle; 4MiB command output; 30s socket idle timeout.",
+    "pactl executable resolved by SSGG_PACTL or PATH; desktop has no compile-time Pulse dependency and adds no dependencies."
+  ]
+}

@@ -15,6 +15,8 @@
 //! - Headsets: Arctis Nova Pro, Arctis 7/9, and more
 
 pub mod config;
+#[cfg(unix)]
+pub mod desktop;
 pub mod device_state;
 pub mod devices;
 pub mod diagnostics_export;

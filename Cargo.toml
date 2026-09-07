@@ -18,6 +18,11 @@ path = "src/lib.rs"
 name = "ssgg"
 path = "src/main.rs"
 
+# Desktop sidecar has no compile-time Pulse dependency; uses bounded pactl RPC.
+[[bin]]
+name = "ssgg-desktop"
+path = "src/bin/ssgg_desktop.rs"
+
 # Discovery and diagnostics binaries
 [[bin]]
 name = "discover_actuation"
