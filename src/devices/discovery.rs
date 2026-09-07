@@ -5,11 +5,13 @@ use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
 
+use super::headsets::nova7_gen2::{Nova7Gen2, is_control_interface};
 use super::headsets::{GenericHeadset, Headset};
 use super::hid_reports::ConnectionHealth;
 use super::keyboards::apex::Apex3Tkl;
 use super::keyboards::apex_pro_tkl_2023::ApexProTkl2023;
 use super::keyboards::{GenericKeyboard, Keyboard};
+use super::product_ids::ARCTIS_NOVA_7_GEN2;
 use super::product_ids::{
     APEX_3_TKL, APEX_PRO_TKL_2023, APEX_PRO_TKL_2023_WIRELESS, APEX_PRO_TKL_2023_WIRELESS_2, APEX_PRO_TKL_2024,
     APEX_PRO_TKL_WIRELESS_2024, APEX_PRO_TKL_WIRELESS_2024_DONGLE,
@@ -33,6 +35,9 @@ use crate::{Error, Result, STEELSERIES_VENDOR_ID};
 ///    (kept as a fallback since the wireless PIDs are unverified against this ranking).
 /// 4. Standard OS-facing pages (Generic Desktop `0x0001`, Consumer `0x000C`) never qualify.
 fn control_score(usage_page: u16, interface_number: i32, product_id: u16, device_type: DeviceType) -> Option<u32> {
+    if product_id == ARCTIS_NOVA_7_GEN2 {
+        return (usage_page == 0xffc0 && interface_number == 3).then_some(3_000_000);
+    }
     if usage_page == STEELSERIES_CONTROL_USAGE_PAGE {
         return Some(3_000_000 - interface_number.max(0) as u32);
     }
@@ -475,8 +480,21 @@ impl DeviceManager {
             )));
         }
 
+        if info.product_id == ARCTIS_NOVA_7_GEN2 {
+            return Ok(Box::new(self.open_nova7_gen2(info)?));
+        }
         let hid_device = self.open_device(info)?;
         Ok(Box::new(GenericHeadset::new(info.clone(), hid_device)))
+    }
+
+    /// Open the typed Gen 2 driver without initialization writes or reads.
+    /// Keep one instance per device to own the interleaved status/wheel stream.
+    pub fn open_nova7_gen2(&self, info: &DeviceInfo) -> Result<Nova7Gen2> {
+        let control = self
+            .resolve_control(info.vendor_id, info.product_id)
+            .filter(|candidate| is_control_interface(candidate))
+            .ok_or_else(|| Error::DeviceNotFound("Nova 7 Gen 2 control interface 3/ffc0:1".into()))?;
+        Nova7Gen2::new(control.clone(), self.open_device(control)?)
     }
 
     // === Hot-plug monitoring methods ===
@@ -925,6 +943,14 @@ mod tests {
             (3, 0x0001, 0x02, "mi_03&col02"),
             (4, 0xFFC1, 0x01, "mi_04"), // vendor-defined but input-only (out=0, feature=0)
         ]
+    }
+
+    #[test]
+    fn nova7_gen2_control_interface_has_no_unsafe_fallback() {
+        assert!(control_score(0xffc0, 3, 0x227e, DeviceType::Headset).is_some());
+        assert!(control_score(0xffc0, 4, 0x227e, DeviceType::Headset).is_none());
+        assert!(control_score(0xffc1, 3, 0x227e, DeviceType::Headset).is_none());
+        assert!(control_score(1, 3, 0x227e, DeviceType::Headset).is_none());
     }
 
     #[test]
