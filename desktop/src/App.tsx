@@ -212,7 +212,15 @@ export default function App() {
               mutate={mutate}
             />
           ) : (
-            <Mixer snapshot={snapshot} busy={busy} loading={loading} mutate={mutate} />
+            <Mixer
+              snapshot={snapshot}
+              busy={busy}
+              loading={loading}
+              mutate={mutate}
+              selectedDevice={selectedDevice}
+              onChooseDevice={() => setTab("devices")}
+              readOnly={runtime?.readOnly}
+            />
           )}
         </div>
         <div className="save-status" role="status">
