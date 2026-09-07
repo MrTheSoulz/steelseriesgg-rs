@@ -1,0 +1,8 @@
+# Chromium still applies its own renderer/seccomp sandbox. This app-specific
+# attachment permits user namespaces under Ubuntu's restricted-userns policy.
+abi <abi/4.0>,
+include <tunables/global>
+profile io.github.MrTheSoulz.SSGG /opt/ssgg/ssgg-gui flags=(unconfined) {
+  userns,
+  include if exists <local/io.github.MrTheSoulz.SSGG>
+}

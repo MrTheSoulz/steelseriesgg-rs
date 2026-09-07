@@ -2,6 +2,42 @@ import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { createConnection } from "node:net";
 import { JsonLineClient } from "./rpc";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+async function queryBusOwner(name: string) {
+  const { stdout } = await execFileAsync(
+    "dbus-send",
+    [
+      "--session",
+      "--print-reply",
+      "--reply-timeout=1000",
+      "--dest=org.freedesktop.DBus",
+      "/org/freedesktop/DBus",
+      "org.freedesktop.DBus.NameHasOwner",
+      `string:${name}`,
+    ],
+    { timeout: 1500, maxBuffer: 4096 },
+  );
+  return stdout;
+}
+/** A Tray object alone is not evidence of a GNOME indicator extension/watcher. */
+export async function hasTrayWatcher(query: (name: string) => Promise<string> = queryBusOwner) {
+  const results = await Promise.all(
+    ["org.kde.StatusNotifierWatcher", "org.freedesktop.StatusNotifierWatcher"].map(async (name) => {
+      try {
+        return /\bboolean\s+true\b/.test(await query(name));
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return results.some(Boolean);
+}
+export function trayIconFilename(darkTheme: boolean) {
+  return darkTheme ? "ssgg-tray-light.png" : "ssgg-tray-dark.png";
+}
 
 export function assertWritable(readOnly: boolean) {
   if (readOnly) throw new Error("Read-only session: audio, hardware and profile writes are blocked.");
