@@ -369,6 +369,31 @@
     gap: 14px 30px;
     margin: 20px 0;
   }
+  .wheel-input {
+    margin: 8px 0 24px;
+  }
+  .wheel-input .capability-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 0;
+    color: var(--ink);
+  }
+  .wheel-input .capability-row > div {
+    flex: 1 1 240px;
+  }
+  .wheel-input .capability-row p {
+    color: var(--muted);
+    margin-top: 4px;
+    font-size: 12px;
+  }
+  .wheel-input .capability-row button {
+    font-size: 13px;
+    min-height: 36px;
+  }
+  .wheel-input .helper {
+    margin-top: 8px;
+  }
   .input-mode {
     display: flex;
     align-items: center;
