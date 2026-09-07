@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { Snapshot, DesktopBridge, Stream, Group } from "./shared/contracts";
 import { Range } from "./Range";
+import WheelInput from "./WheelInput";
 export type Mutate = (action: (bridge: DesktopBridge) => Promise<unknown>, message?: string) => Promise<void>;
 const groupNames = { game: "Game", chat: "Chat", media: "Media", unmanaged: "Unmanaged" };
 export function appLabel(stream: Stream) {
@@ -31,11 +32,17 @@ export default function Mixer({
   busy,
   loading,
   mutate,
+  selectedDevice = "",
+  onChooseDevice,
+  readOnly = false,
 }: {
   snapshot: Snapshot | null;
   busy: boolean;
   loading: boolean;
   mutate: Mutate;
+  selectedDevice?: string;
+  onChooseDevice?: () => void;
+  readOnly?: boolean;
 }) {
   const enabled = !!snapshot?.chatmix.enabled;
   const ready = !!snapshot?.audio.available && !snapshot.readOnly && !busy;
@@ -66,27 +73,14 @@ export default function Mixer({
             <ArrowRight size={16} />
           </button>
         </div>
-        {snapshot?.physical && (
-          <label className="input-mode">
-            Balance input{" "}
-            <select
-              aria-label="ChatMix input"
-              disabled={!ready}
-              value={hardware ? "hardware" : "software"}
-              onChange={(e) =>
-                void mutate(
-                  (b) => b.setChatmix({ inputMode: e.target.value as "software" | "hardware" }),
-                  "ChatMix input updated",
-                )
-              }
-            >
-              <option value="software">On-screen balance</option>
-              <option value="hardware" disabled={!snapshot.chatmix.wheelAvailable}>
-                Physical wheel
-              </option>
-            </select>
-          </label>
-        )}
+        <WheelInput
+          snapshot={snapshot}
+          busy={busy}
+          mutate={mutate}
+          selectedDevice={selectedDevice}
+          onChooseDevice={onChooseDevice}
+          readOnly={readOnly}
+        />
         <div className="balance-control">
           <div className="balance-labels">
             <div>
@@ -138,12 +132,6 @@ export default function Mixer({
               ? "Your base volumes stay separate from ChatMix attenuation. Disable ChatMix to restore the full mix."
               : "ChatMix disabled. Assign applications and choose each group’s ChatMix side, then enable. Group gain and native stream volume work independently."}
         </p>
-        {snapshot && !snapshot.chatmix.wheelAvailable && (
-          <p className="capability-note">
-            Physical wheel unavailable: {snapshot.chatmix.reason || "This device does not expose verified wheel input."}{" "}
-            The on-screen balance works independently.
-          </p>
-        )}
       </section>
       {snapshot && !snapshot.audio.available && (
         <p className="inline-warning">
