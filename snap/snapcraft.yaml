@@ -1,0 +1,67 @@
+name: ssgg
+base: core24
+version: '0.1.0'
+summary: SteelSeries desktop controls for Linux
+# Keep devel until installed strict confinement and permissions are verified.
+grade: devel
+confinement: strict
+platforms:
+  amd64:
+    build-on: [amd64]
+    build-for: [amd64]
+description: |
+  SSGG is a desktop companion for SteelSeries devices and Linux audio.
+  This strict Snap is experimental: hardware requires a system-provided
+  hidraw slot and a manual connection, which stock Ubuntu may not provide.
+  Audio playback access does not guarantee control of other applications.
+  The Electron sandbox remains enabled and requires browser-support approval.
+icon: snap/gui/ssgg.svg
+
+plugs:
+  electron-sandbox:
+    interface: browser-support
+    allow-sandbox: true
+
+apps:
+  ssgg:
+    command: bin/ssgg-launch
+    extensions: [gnome]
+    common-id: io.github.MrTheSoulz.SSGG
+    desktop: usr/share/applications/ssgg.desktop
+    plugs: [audio-playback, hidraw, electron-sandbox]
+  diagnostics:
+    command: bin/ssgg-diagnostics
+    plugs: [audio-playback, hidraw]
+    environment:
+      LD_LIBRARY_PATH: $SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu/pulseaudio:$SNAP/lib/x86_64-linux-gnu
+
+parts:
+  application:
+    plugin: dump
+    source: desktop/release/app
+    organize:
+      '*': app/
+    stage-packages:
+      - pulseaudio-utils
+      - libudev1
+      - libnss3
+      - libnspr4
+      - libasound2t64
+    override-build: |
+      craftctl default
+      chmod 0755 "$CRAFT_PART_INSTALL/ssgg-gui"
+      chmod 0755 "$CRAFT_PART_INSTALL/resources/ssgg-desktop"
+      # Organize moves these under app/ during staging, after this build step.
+      # Use Chromium's user-namespace sandbox, not a bundled setuid helper.
+      if [ -f "$CRAFT_PART_INSTALL/chrome-sandbox" ]; then
+        chmod 0755 "$CRAFT_PART_INSTALL/chrome-sandbox"
+      fi
+  launchers:
+    plugin: dump
+    source: snap/local
+  desktop-entry:
+    plugin: dump
+    source: snap/gui
+    organize:
+      ssgg.desktop: usr/share/applications/ssgg.desktop
+      ssgg.svg: usr/share/icons/hicolor/scalable/apps/ssgg.svg
