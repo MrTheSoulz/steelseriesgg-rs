@@ -1,5 +1,19 @@
 # SteelSeries Device Reference
 
+## Current desktop controls
+
+| Device | Exact identity | Desktop scope |
+| --- | --- | --- |
+| Arctis Nova 7 Gen 2 | `1038:227e`, control interface 3 / usage page `0xffc0` / usage 1 | Dedicated driver; status and physical wheel, source-derived sidetone/auto-off. No RGB. Wheel center/extremes were read locally; setting writes have separate acceptance gates. |
+| Apex Pro TKL Gen 3 wired | `1038:1642`, interface 1 | Source-derived solid RGB/brightness/off, explicit per-request Apply. Physical RGB acceptance pending. |
+
+Discovery does not acquire hardware. A registry match is not a promise that every device feature is implemented, and wireless/older-generation models are not interchangeable. The desktop uses capability reasons and rejects speculative writes. [Current user-facing support](../../README.md#what-works-in-this-branch) and [RGB protocol scope](protocol-keyboard.md#desktop-lighting-scope) take precedence over inherited feature assumptions.
+
+## Historical registry research
+
+The tables and bug findings below preserve upstream firmware/capture research. Their historical “connected hardware” observations are not a live inventory, and are not blanket desktop support claims.
+
+
 All SteelSeries devices use VID `0x1038`.
 
 PIDs in this file are sourced from GG firmware folder names, which encode `(VID << 16) | PID`.

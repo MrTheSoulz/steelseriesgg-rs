@@ -1,6 +1,7 @@
 //! Desktop-only audio policy. Construction and inventory are strictly read-only.
 pub mod devices;
 pub mod hardware;
+pub mod lighting;
 pub mod pulse;
 pub mod rpc;
 use serde::{Deserialize, Serialize};
@@ -183,6 +184,7 @@ pub struct Service<B: Backend> {
     settings: Settings,
     physical: hardware::Physical,
     hardware: hardware::Controller,
+    lighting: lighting::AsyncController,
     hardware_dirty: bool,
     assignments: std::collections::BTreeMap<String, Assignment>,
     path: PathBuf,
@@ -197,6 +199,14 @@ impl<B: Backend> Service<B> {
         Self::with_hardware(backend, path, hardware::Controller::default())
     }
     pub fn with_hardware(backend: B, path: PathBuf, hardware: hardware::Controller) -> Result<Self, String> {
+        Self::with_controllers(backend, path, hardware, lighting::Controller::default())
+    }
+    pub fn with_controllers(
+        backend: B,
+        path: PathBuf,
+        hardware: hardware::Controller,
+        lighting: lighting::Controller,
+    ) -> Result<Self, String> {
         use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
         let parent = path.parent().ok_or("config path has no parent")?;
         std::fs::DirBuilder::new()
@@ -232,6 +242,7 @@ impl<B: Backend> Service<B> {
             settings: Settings::default(),
             physical: hardware::Physical::default(),
             hardware,
+            lighting: lighting::AsyncController::new(lighting),
             hardware_dirty: false,
             assignments: Default::default(),
             applied: Default::default(),
@@ -258,6 +269,7 @@ impl<B: Backend> Service<B> {
     }
     /// Reconcile restarted opted-in apps. Never arms itself on service startup.
     pub fn tick(&mut self) -> Result<(), String> {
+        self.lighting.poll();
         self.backend.begin_cycle();
         self.sync_hardware();
         self.refresh().map_err(|e| e.message)?;
@@ -335,6 +347,7 @@ impl<B: Backend> Service<B> {
     pub fn set_read_only(&mut self, value: bool) {
         self.read_only = value;
         if value {
+            self.lighting.cancel();
             self.hardware.stop();
             self.armed = false;
             self.mixer.enabled = false;
@@ -531,15 +544,24 @@ impl<B: Backend> Service<B> {
     }
     fn state(&mut self) -> Value {
         let error = self.refresh().err().map(|e| e.message);
-        let (devices, device_error) = match devices::inventory() {
+        let (mut devices, device_error) = match devices::inventory() {
             Ok(d) => (devices::with_physical(d, &self.physical), None),
             Err(e) => (Vec::new(), Some(e.to_string())),
         };
+        self.lighting.decorate(&mut devices);
         json!({"streams":self.snapshot.streams,"sinks":self.snapshot.sinks,"groups":self.groups,"mixer":self.mixer,"physical":self.physical,"settings":self.settings,"profiles":self.profile_names(),"devices":devices,"deviceError":device_error,"backend":{"name":"PulseAudio / PipeWire-Pulse","connected":error.is_none(),"error":error}})
     }
     fn dispatch(&mut self, method: &str, params: Value) -> Result<Value, RpcError> {
         if self.read_only
-            && ["stream.set", "group.set", "chatmix.set", "profiles.apply", "device.set"].contains(&method)
+            && [
+                "stream.set",
+                "group.set",
+                "chatmix.set",
+                "profiles.apply",
+                "device.set",
+                "lighting.apply",
+            ]
+            .contains(&method)
         {
             return Err(RpcError::new(
                 "UNSUPPORTED",
@@ -548,6 +570,14 @@ impl<B: Backend> Service<B> {
         }
         match method {
             "state.get" => Ok(self.state()),
+            "lighting.apply" => {
+                let p: lighting::Apply = decode(params)?;
+                p.validate().map_err(RpcError::invalid)?;
+                self.lighting
+                    .queue(p)
+                    .map(|()| json!({"pending":true}))
+                    .map_err(|e| RpcError::new("HARDWARE_UNAVAILABLE", e))
+            }
             "stream.set" => {
                 let p: StreamSet = decode(params)?;
                 gain(p.volume, 0.0)?;
@@ -668,9 +698,14 @@ impl<B: Backend> Service<B> {
                 self.persist()?;
                 Ok(self.state())
             }
-            "devices.list" => devices::inventory()
-                .map(|d| json!(devices::with_physical(d, &self.physical)))
-                .map_err(|e| RpcError::new("IO_ERROR", e.to_string())),
+            "devices.list" => {
+                let mut entries = devices::with_physical(
+                    devices::inventory().map_err(|e| RpcError::new("IO_ERROR", e.to_string()))?,
+                    &self.physical,
+                );
+                self.lighting.decorate(&mut entries);
+                Ok(json!(entries))
+            }
             "device.set" => {
                 #[derive(Deserialize)]
                 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-main/
+artifacts/
+resources/ssgg-desktop
+local-bin/
+release/

@@ -1,0 +1,137 @@
+{
+  "mode": "Real Rust sidecar --stdio --safe-mode. Inventory only, no audio/HID mutation requests.",
+  "electron": "44.2.0",
+  "sandbox": true,
+  "state": {
+    "streams": [
+      {
+        "id": "3830",
+        "appKey": "[\"Discord\",\"WEBRTC VoiceEngine\",\"\"]",
+        "name": "playStream",
+        "appName": "WEBRTC VoiceEngine",
+        "volume": 1,
+        "effectiveVolume": 1,
+        "effectiveMuted": false,
+        "muted": false,
+        "group": "unmanaged",
+        "sinkId": 3798
+      },
+      {
+        "id": "8665",
+        "appKey": "[\"Hermes\",\"Chromium\",\"\"]",
+        "name": "Playback",
+        "appName": "Chromium",
+        "volume": 1,
+        "effectiveVolume": 1,
+        "effectiveMuted": false,
+        "muted": false,
+        "group": "unmanaged",
+        "sinkId": 3798
+      }
+    ],
+    "groups": [
+      {
+        "id": "game",
+        "name": "Game",
+        "volume": 1,
+        "muted": false,
+        "wheelSide": "a"
+      },
+      {
+        "id": "chat",
+        "name": "Chat",
+        "volume": 1,
+        "muted": false,
+        "wheelSide": "b"
+      },
+      {
+        "id": "media",
+        "name": "Media",
+        "volume": 1,
+        "muted": false,
+        "wheelSide": "none"
+      }
+    ],
+    "devices": [
+      {
+        "id": "1038:227e:",
+        "name": "Arctis Nova 7 Gen 2",
+        "vendorId": 4152,
+        "productId": 8830,
+        "connected": true,
+        "kind": "headset",
+        "battery": null,
+        "capabilities": {
+          "autoOff": {
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
+          },
+          "battery": {
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
+          },
+          "hardwareEq": {
+            "supported": false,
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
+          },
+          "micMute": {
+            "supported": false,
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
+          },
+          "micVolume": {
+            "supported": false,
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
+          },
+          "physicalChatmix": {
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
+          },
+          "rgb": {
+            "supported": false,
+            "reason": "No verified model-specific implementation; no command will be sent",
+            "locallyValidated": false
+          },
+          "sidetone": {
+            "supported": true,
+            "reason": "Dedicated model protocol implemented from cited upstream sources; local hardware validation pending. Explicit acquisition required",
+            "locallyValidated": false
+          }
+        }
+      }
+    ],
+    "chatmix": {
+      "balance": 0,
+      "enabled": false,
+      "inputMode": "software",
+      "wheelAvailable": false,
+      "reason": "Enable hardware in Devices, then move the wheel. Hardware acquisition does not enable ChatMix."
+    },
+    "physical": {
+      "deviceId": null,
+      "hardwareEnabled": false,
+      "hardwareAcquired": false,
+      "connected": null,
+      "battery": null,
+      "charging": null,
+      "sample": null,
+      "statusAtMs": null,
+      "stale": false,
+      "pending": false,
+      "sidetone": null,
+      "autoOffMinutesSent": null,
+      "lastCommand": null,
+      "error": null
+    },
+    "audio": {
+      "available": true
+    },
+    "profiles": [],
+    "readOnly": true
+  }
+}

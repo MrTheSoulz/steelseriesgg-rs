@@ -257,7 +257,12 @@ fn status_only_receiver_updates_physical_mix_without_unsolicited_reports() {
     // Real Gen 2 capture supplied new gains only in replies to status queries.
     // No 0x45 event is injected; a slow battery-only poll misses wheel motion.
     wire.lock().unwrap().status_gains = Some((0, 100));
-    let state = settle(&mut s, |v| v["physical"]["sample"]["gamePercent"] == 0);
+    let state = settle(&mut s, |v| {
+        v["physical"]["sample"]["gamePercent"] == 0
+            && v["physical"]["sample"]["chatPercent"] == 100
+            && v["streams"][0]["effectiveVolume"] == 0.0
+            && v["streams"][1]["effectiveVolume"] == 0.8
+    });
     assert_eq!(state["streams"][0]["effectiveVolume"], 0.0);
     assert_eq!(state["streams"][1]["effectiveVolume"], 0.8);
     wire.lock().unwrap().status_gains = Some((100, 100));
@@ -300,8 +305,29 @@ fn injected_protocol_wheel_drives_two_independent_gains_without_compounding() {
     assert_eq!(state["physical"]["battery"], 73);
     assert_eq!(state["mixer"]["enabled"], false);
     call(&mut s, "chatmix.set", json!({"inputMode":"hardware","enabled":true}));
-    wire.lock().unwrap().reports.push_back(vec![0x45, 40, 70]);
-    let state = settle(&mut s, |v| v["physical"]["sample"]["gamePercent"] == 40);
+    // Force the CI ordering: the HID sample arrives after a policy tick,
+    // then state.get observes it before the next tick can apply audio gains.
+    s.tick().unwrap();
+    let writes_before_read = s.backend.writes;
+    changed_wheel_without_audio_tick(&mut s, &wire);
+    let state = call(&mut s, "state.get", json!({}));
+    assert_eq!(state["physical"]["sample"]["gamePercent"], 40);
+    assert_eq!(state["physical"]["sample"]["chatPercent"], 70);
+    assert_eq!(s.backend.writes, writes_before_read, "state.get must not apply audio");
+    for (index, stream) in s.backend.snapshot.streams.iter().enumerate() {
+        assert_eq!(stream.effective_volume, 0.8);
+        assert_eq!(state["streams"][index]["effectiveVolume"], 0.8);
+    }
+    // A fresh sample is not an audio completion barrier. Require readback of
+    // both independent gains, not just the HID owner's latest percentages.
+    let applied = |v: &Value| {
+        v["physical"]["sample"]["gamePercent"] == 40
+            && v["physical"]["sample"]["chatPercent"] == 70
+            && (v["streams"][0]["effectiveVolume"].as_f64().unwrap() - 0.32).abs() < 0.0001
+            && (v["streams"][1]["effectiveVolume"].as_f64().unwrap() - 0.56).abs() < 0.0001
+    };
+    assert!(!applied(&state), "readback before the policy tick must not settle");
+    let state = settle(&mut s, applied);
     assert!((state["streams"][0]["effectiveVolume"].as_f64().unwrap() - 0.32).abs() < 0.0001);
     assert!((state["streams"][1]["effectiveVolume"].as_f64().unwrap() - 0.56).abs() < 0.0001);
     assert_eq!(state["streams"][2]["effectiveVolume"], 0.8);
@@ -309,6 +335,13 @@ fn injected_protocol_wheel_drives_two_independent_gains_without_compounding() {
     std::thread::sleep(Duration::from_millis(60));
     s.tick().unwrap();
     assert!((s.backend.snapshot.streams[0].volume - 0.32).abs() < 0.0001);
+    assert!((s.backend.snapshot.streams[1].volume - 0.56).abs() < 0.0001);
+    assert_eq!(s.backend.snapshot.streams[2].volume, 0.8);
+    let state = call(&mut s, "state.get", json!({}));
+    assert!(applied(&state), "repeated gains must not compound: {state}");
+    for stream in state["streams"].as_array().unwrap() {
+        assert_eq!(stream["volume"], 0.8, "base intent must survive attenuation");
+    }
     call(&mut s, "device.set", json!({"id":ID,"hardwareEnabled":false}));
     drop(s);
     assert_eq!(wire.lock().unwrap().drops, 1);
@@ -551,6 +584,9 @@ fn stalled_hid_query_does_not_block_rpc_and_safe_mode_cancels_queued_writes() {
     }
     call(&mut s, "device.set", json!({"id":ID,"sidetone":3}));
     s.set_read_only(true);
+    // RPC persistence can outlast a re-query slot under parallel test load.
+    // Status-only re-queries before cancellation are allowed, none after it.
+    let writes_at_cancel = wire.lock().unwrap().writes.clone();
     let state = call(&mut s, "state.get", json!({}));
     assert_eq!(state["physical"]["hardwareEnabled"], false);
     let start = Instant::now();
@@ -558,7 +594,12 @@ fn stalled_hid_query_does_not_block_rpc_and_safe_mode_cancels_queued_writes() {
     assert!(start.elapsed() < Duration::from_millis(1500));
     let w = wire.lock().unwrap();
     assert_eq!(w.drops, 1);
-    assert_eq!(w.writes, vec![vec![0, 0xb0]]);
+    assert!((1..=10).contains(&writes_at_cancel.len()));
+    assert!(writes_at_cancel.iter().all(|data| data == &[0, 0xb0]));
+    assert_eq!(
+        w.writes, writes_at_cancel,
+        "cancelled owner must not re-query or apply queued settings"
+    );
 }
 
 #[test]

@@ -44,16 +44,27 @@ pub fn inventory() -> crate::Result<Vec<Value>> {
         if nova && !(info.interface_number() == 3 && info.usage_page() == 0xffc0 && info.usage() == 1) {
             continue;
         }
-        let id = format!(
-            "{:04x}:{:04x}:{}",
-            info.vendor_id(),
-            info.product_id(),
-            info.serial_number().unwrap_or("usb")
-        );
-        let capabilities = capabilities(nova);
+        let rgb_model = info.product_id() == 0x1642;
+        if rgb_model && info.interface_number() != 1 {
+            continue;
+        }
+        let id = if rgb_model {
+            super::lighting::Endpoint::from_info(info)
+                .map_err(crate::Error::DeviceCommunication)?
+                .id
+        } else {
+            format!(
+                "{:04x}:{:04x}:{}",
+                info.vendor_id(),
+                info.product_id(),
+                info.serial_number().unwrap_or("usb")
+            )
+        };
+        let mut capabilities = capabilities(nova);
+        capabilities["rgb"] = super::lighting::capability(info.vendor_id(), info.product_id(), info.interface_number());
         devices.entry(id.clone()).or_insert_with(||json!({
    "id":id,"name":info.product_string().unwrap_or("SteelSeries device"),"vendorId":info.vendor_id(),"productId":info.product_id(),
-   "connected":true,"kind":if nova {"headset"} else {"other"},"battery":null,
+   "connected":true,"kind":if nova {"headset"} else if rgb_model || info.product_id() == 0x1628 {"keyboard"} else {"other"},"battery":null,
    "artworkKey":if nova {Some("arctis-nova-7-gen-2")} else {None},"capabilities":capabilities,
    "hardwareEnabled":false,"hardwareAcquired":false,"protocolStatus":if nova {"Source-supported dedicated protocol; local hardware validation pending"} else {"Unverified model"}
   }));
