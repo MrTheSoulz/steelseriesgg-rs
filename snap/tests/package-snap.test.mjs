@@ -35,6 +35,43 @@ test('prepare creates an isolated strict project from a distribution', async () 
   }
 });
 
+test('localized readelf cannot hide a GLIBC requirement above core24', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ssgg-snap-locale-test-'));
+  try {
+    const app = join(root, 'input');
+    const bin = join(root, 'tools');
+    await mkdir(join(app, 'resources/branding'), { recursive: true });
+    await mkdir(bin);
+    // Real ELFs with explicitly simulated readelf language/version output below.
+    // This parser fixture is NOT evidence of an SSGG build or library closure.
+    await copyFile('/usr/bin/true', join(app, 'ssgg-gui'));
+    await copyFile('/usr/bin/true', join(app, 'resources/ssgg-desktop'));
+    await writeFile(join(app, 'resources/branding/ssgg.svg'), '<svg/>');
+    const readelf = join(bin, 'readelf');
+    await writeFile(readelf, `#!/bin/sh
+case "$LC_ALL" in
+  C) label=Name ;;
+  *) label=Nome ;;
+esac
+printf '  0x0010:   %s: GLIBC_%s  Flags: none  Version: 2\\n' "$label" "$SSGG_TEST_GLIBC"
+`, { mode: 0o755 });
+    for (const version of ['2.43', '2.39']) {
+      const output = join(root, `project-${version}`);
+      const result = spawnSync(process.execPath, [script.pathname, '--app-dir', app, '--output-dir', output, '--prepare-only'], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, LC_ALL: 'pt_PT.UTF8', LANGUAGE: 'pt_PT', SSGG_TEST_GLIBC: version },
+      });
+      if (version === '2.43') {
+        assert.notEqual(result.status, 0, 'localized GLIBC_2.43 must not be accepted');
+        assert.match(result.stderr, /requires GLIBC newer than core24 \(2\.39\)/);
+        await assert.rejects(readFile(join(output, 'snap/snapcraft.yaml')), { code: 'ENOENT' });
+      } else {
+        assert.equal(result.status, 0, result.stderr);
+      }
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('launcher preserves sandbox, snap-local state, arguments and explicit audio server', async () => {
   const { chmod } = await import('node:fs/promises');
   const root = await mkdtemp(join(tmpdir(), 'ssgg-snap-launch-test-'));

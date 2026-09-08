@@ -8,7 +8,8 @@ import { parseArgs } from 'node:util';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
 function run(command, args, cwd) {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
+  // readelf fields are parsed below; never inherit translated labels from the host.
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } });
   if (result.error || result.status !== 0) {
     throw new Error(`${command}: ${result.error?.message || result.stderr || result.stdout}`);
   }

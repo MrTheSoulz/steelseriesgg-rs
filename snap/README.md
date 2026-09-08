@@ -157,11 +157,16 @@ mixing in the app. Native package configuration is separate and untouched.
 ```sh
 node --test snap/tests/package-snap.test.mjs
 python3 snap/tests/validate-skeleton.py  # requires PyYAML and snap
+uv run --with craft-parts --with pyyaml python3 snap/tests/test-stage-layout.py
 ```
 
 The Node tests use explicitly labelled ELF/shell **fixtures**, never release
 artifacts. They exercise preparation, overwrite refusal, launcher environment,
-argument forwarding and read-only diagnostics. The skeleton check invokes real
+argument forwarding, localized ABI rejection and read-only diagnostics. The
+layout regression uses real craft-parts `organize_files` with labelled temporary
+text path fixtures: it checks that archive `usr/bin/pactl` and library paths stay
+at the Snap root while Electron stays under `app/`. It does not stage packages
+or produce runtime libraries. The skeleton check invokes real
 `snap pack --check-skeleton` for authored runtime metadata and executable bits;
 it does not pretend to expand the GNOME extension or verify staged libraries.
 

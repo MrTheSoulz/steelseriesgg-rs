@@ -41,12 +41,6 @@ parts:
     source: desktop/release/app
     organize:
       '*': app/
-    stage-packages:
-      - pulseaudio-utils
-      - libudev1
-      - libnss3
-      - libnspr4
-      - libasound2t64
     override-build: |
       craftctl default
       chmod 0755 "$CRAFT_PART_INSTALL/ssgg-gui"
@@ -56,6 +50,16 @@ parts:
       if [ -f "$CRAFT_PART_INSTALL/chrome-sandbox" ]; then
         chmod 0755 "$CRAFT_PART_INSTALL/chrome-sandbox"
       fi
+  # Keep archive runtime paths outside the application's wildcard organize.
+  # Launchers and library search paths require $SNAP/usr/{bin,lib}, not app/usr.
+  runtime:
+    plugin: nil
+    stage-packages:
+      - pulseaudio-utils
+      - libudev1
+      - libnss3
+      - libnspr4
+      - libasound2t64
   launchers:
     plugin: dump
     source: snap/local
