@@ -4,6 +4,18 @@ import { mkdtemp, writeFile, symlink, rm, mkdir, readFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 import { inspectElf, validateTree, compareVersions } from "../scripts/package-lib.mjs";
+import * as packaging from "../scripts/package-lib.mjs";
+
+test("package builds use a portable Rust CPU baseline instead of developer tuning", () => {
+  assert.equal(typeof packaging.portableCargoEnv, "function");
+  const original = {
+    PATH: "/test/bin",
+    RUSTFLAGS: "-Ctarget-cpu=native",
+    CARGO_ENCODED_RUSTFLAGS: "-Ctarget-cpu=x86-64-v3",
+  };
+  assert.deepEqual(packaging.portableCargoEnv(original), { PATH: "/test/bin", RUSTFLAGS: "-Ctarget-cpu=x86-64" });
+  assert.equal(original.RUSTFLAGS, "-Ctarget-cpu=native");
+});
 
 test("derive the real ELF ABI floor instead of claiming a build is portable", async () => {
   const result = await inspectElf("/bin/true");

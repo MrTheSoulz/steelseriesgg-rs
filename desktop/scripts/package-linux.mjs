@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { run, inspectElf, compareVersions, validateTree } from "./package-lib.mjs";
+import { run, inspectElf, compareVersions, validateTree, portableCargoEnv } from "./package-lib.mjs";
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repo = path.dirname(desktop),
@@ -35,7 +35,11 @@ for (const name of ["ssgg.png", "ssgg.svg", "ssgg-symbolic.svg", "ssgg-tray-ligh
   if (!(await lstat(path.join(branding, name))).isFile()) throw new Error(`Missing branding: ${name}`);
 run("npm", ["run", "build"], { cwd: desktop, stdio: "inherit" });
 if (!sidecar) {
-  run("cargo", ["build", "--release", "--locked", "--bin", "ssgg-desktop"], { cwd: repo, stdio: "inherit" });
+  run("cargo", ["build", "--release", "--locked", "--bin", "ssgg-desktop"], {
+    cwd: repo,
+    stdio: "inherit",
+    env: portableCargoEnv(),
+  });
   sidecar = path.join(repo, "target/release/ssgg-desktop");
 }
 if (!(await lstat(sidecar)).isFile()) throw new Error("Sidecar must be a regular file, not a symlink");

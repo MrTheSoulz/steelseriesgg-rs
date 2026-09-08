@@ -18,6 +18,8 @@ jobs:
     name: Ubuntu 24.04 desktop amd64
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      RUSTFLAGS: "-Ctarget-cpu=x86-64"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -37,7 +39,7 @@ jobs:
         run: npm ci --include=dev
       - name: Unit and native safety gates
         run: |
-          cargo test --locked --test desktop_hardware --test desktop_review
+          cargo test --locked --test desktop_hardware --test desktop_review --test desktop_lighting
           cargo clippy --all-targets --locked -- -D warnings
           cd desktop
           npm run typecheck
@@ -87,7 +89,60 @@ jobs:
             desktop/artifacts/ubuntu-installed.json
           if-no-files-found: error
           retention-days: 30
+  snap-experimental:
+    name: Experimental strict Snap (build only)
+    needs: ubuntu-desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: ssgg-ubuntu-24.04-amd64
+          path: snap-input
+      - name: Install Snap build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils squashfs-tools python3-yaml
+      - name: Prepare the tested standalone application
+        run: |
+          (cd snap-input/release && sha256sum -c ssgg-gui-linux-amd64.tar.xz.sha256)
+          mkdir -p desktop/release
+          tar -xJf snap-input/release/ssgg-gui-linux-amd64.tar.xz -C desktop/release
+          node --test snap/tests/package-snap.test.mjs
+          node desktop/scripts/package-snap.mjs --prepare-only
+      - name: Build in the disposable matching-base runner
+        working-directory: desktop/release/snap-project
+        run: |
+          sudo snap install snapcraft --classic
+          sudo snapcraft pack --destructive-mode
+      - name: Verify the real Snap payload without claiming installed usability
+        working-directory: desktop/release/snap-project
+        run: |
+          shopt -s nullglob
+          packages=(*.snap)
+          test "${#packages[@]}" = 1
+          package="${packages[0]}"
+          unsquashfs -cat "$package" meta/snap.yaml > snap-metadata.yaml
+          /usr/bin/python3 -c 'import yaml; m=yaml.safe_load(open("snap-metadata.yaml")); assert m["confinement"] == "strict" and m["base"] == "core24"'
+          unsquashfs -cat "$package" app/ssgg-gui >/dev/null
+          unsquashfs -cat "$package" app/resources/ssgg-desktop >/dev/null
+          unsquashfs -cat "$package" usr/bin/pactl >/dev/null
+          sha256sum "$package" > "$package.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ssgg-experimental-strict-snap-amd64
+          path: |
+            desktop/release/snap-project/*.snap
+            desktop/release/snap-project/*.sha256
+            desktop/release/snap-project/snap-metadata.yaml
+          if-no-files-found: error
+          retention-days: 30
   build-linux:
+    if: github.event_name == 'workflow_dispatch'
     name: Build Linux / Arch x86_64
     runs-on: ubuntu-latest
     container:

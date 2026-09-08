@@ -8,6 +8,11 @@ export function run(command, args, options = {}) {
     throw new Error(`${command} failed: ${result.error?.message || result.stderr || result.status}`);
   return result.stdout;
 }
+export function portableCargoEnv(source = process.env) {
+  const env = { ...source, RUSTFLAGS: "-Ctarget-cpu=x86-64" };
+  delete env.CARGO_ENCODED_RUSTFLAGS;
+  return env;
+}
 export function compareVersions(a, b) {
   const left = a.split(".").map(Number),
     right = b.split(".").map(Number);

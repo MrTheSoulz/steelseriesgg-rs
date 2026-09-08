@@ -36,7 +36,7 @@ npm run package:deb       # also builds and checks release/ssgg-gui_0.1.0_amd64.
 npm run test:packaging
 ```
 
-Packaging always extracts the checksum-verified official Electron archive, never a development `node_modules/electron/dist` tree. It checks ELF architecture/GLIBC requirements, rejects shipped symlinks, and validates the desktop entry and AppArmor syntax. The standalone output is `release/app`; unprivileged extraction cannot establish the root ownership of the DEB's sandbox helper.
+Packaging compiles Rust for generic `x86-64`, overriding inherited developer CPU tuning, and always extracts the checksum-verified official Electron archive, never a development `node_modules/electron/dist` tree. A custom `--sidecar` must already be built for the intended CPU baseline; ELF architecture/GLIBC checks alone cannot certify every instruction in an externally supplied binary. It checks ELF architecture/GLIBC requirements, rejects shipped symlinks, and validates the desktop entry and AppArmor syntax. The standalone output is `release/app`; unprivileged extraction cannot establish the root ownership of the DEB's sandbox helper.
 
 The Ubuntu CI job installs the DEB on a disposable runner, launches the actual packaged binary in a private session without a helper override, and purges it while checking that user data survives. Archive inspection and local extraction tests alone do not certify fresh installation, Wayland/GNOME Shell behavior or hardware access.
 
