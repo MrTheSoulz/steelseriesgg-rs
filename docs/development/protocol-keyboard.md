@@ -1,5 +1,21 @@
 # Apex Pro HID Protocol Reference
 
+## Desktop lighting scope
+
+The desktop RGB implementation currently targets **Apex Pro TKL Gen 3 wired (`1038:1642`, interface 1)**, not the 2023 device described in the historical sections below.
+
+- `src/devices/hid_reports/apex_gen3.rs` builds 643-byte feature reports: `0x4b` initialization followed by `0x40` direct color over the documented 112-address table.
+- `src/desktop/lighting.rs` checks model/interface/node generation, explicit request consent and cancellation. It reports pending/error/last-sent state, not device readback.
+- Brightness scales RGB values. No firmware effects, on-board saving or automatic reconnect replay is exposed.
+- The `1038:1628` experimental path remains guarded and unavailable in the default desktop workflow. **Do not substitute its 645-byte report layout for Gen 3's 643-byte layout.**
+
+Protocol evidence is pinned to OpenRGB commit `19112cdeff94086fa994c4a9cf45ec5786a599bf`: [detector](https://github.com/CalcProgrammer1/OpenRGB/blob/19112cdeff94086fa994c4a9cf45ec5786a599bf/Controllers/SteelSeriesController/SteelSeriesControllerDetect.cpp), [controller](https://github.com/CalcProgrammer1/OpenRGB/blob/19112cdeff94086fa994c4a9cf45ec5786a599bf/Controllers/SteelSeriesController/SteelSeriesApexController/SteelSeriesApexController.cpp), [address table](https://github.com/CalcProgrammer1/OpenRGB/blob/19112cdeff94086fa994c4a9cf45ec5786a599bf/Controllers/SteelSeriesController/SteelSeriesApexRegions.h). This is source-derived support with transport tests, **not physical Gen 3 acceptance**.
+
+## Historical upstream 2023 notes
+
+The remaining captures and “connected hardware” statements are retained as historical upstream observations. They do not describe hardware currently connected to a user's machine or certify all similarly named models.
+
+
 **VID:** `0x1038` (all SteelSeries devices)
 
 ---

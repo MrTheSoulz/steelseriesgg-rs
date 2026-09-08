@@ -3,6 +3,7 @@
 //! This module provides type-safe HID command construction and validation
 //! for SteelSeries keyboards and headsets, replacing primitive byte array building.
 
+pub mod apex_gen3;
 use super::key_mapping::{KeyAddress, KeyId, KeyMapping};
 use crate::rgb::Color;
 use crate::{Error, Result};
@@ -30,6 +31,8 @@ pub const MAX_RGB_ZONES: usize = 12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum CommandCode {
+    /// Apex Gen 3 direct-mode initialization (643-byte feature report).
+    ApexGen3Initialize = 0x4b,
     /// Apply/Save settings (0x09)
     Apply = 0x09,
     /// RGB zone control (0x21)
@@ -63,6 +66,7 @@ impl fmt::Display for CommandCode {
             CommandCode::ReactiveMode => write!(f, "REACTIVE"),
             CommandCode::ColorShift => write!(f, "COLOR_SHIFT"),
             CommandCode::PerKeyRgb => write!(f, "PERKEY_RGB_EXPERIMENTAL"),
+            CommandCode::ApexGen3Initialize => write!(f, "APEX_GEN3_INIT"),
             CommandCode::Apex2023Direct => write!(f, "APEX2023_DIRECT_EXPERIMENTAL"),
             CommandCode::ActuationControl => write!(f, "ACTUATION_CTRL_EXPERIMENTAL"),
         }
@@ -83,6 +87,7 @@ impl CommandCode {
             0x26 => Some(CommandCode::ColorShift),
             0x23 | 0x2A => Some(CommandCode::PerKeyRgb),
             0x40 => Some(CommandCode::Apex2023Direct),
+            0x4b => Some(CommandCode::ApexGen3Initialize),
             0x2D => Some(CommandCode::ActuationControl),
             _ => None,
         }

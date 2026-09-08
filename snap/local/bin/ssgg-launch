@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+: "${SNAP:?Launch using snap run ssgg}"
+: "${SNAP_USER_DATA:?Missing Snap user data directory}"
+: "${SNAP_USER_COMMON:?Missing Snap user common directory}"
+: "${XDG_RUNTIME_DIR:?Missing Snap runtime directory}"
+
+# Keep private-service sockets in snapd's private runtime, never the host runtime.
+export XDG_CONFIG_HOME="$SNAP_USER_DATA/.config"
+export XDG_CACHE_HOME="$SNAP_USER_COMMON/.cache"
+export SSGG_PACTL="$SNAP/usr/bin/pactl"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
+
+# GNOME's command chain normally sets this; preserve explicit private test servers.
+if [ -z "${PULSE_SERVER:-}" ]; then
+    export PULSE_SERVER="unix:$XDG_RUNTIME_DIR/../pulse/native"
+fi
+exec "$SNAP/app/ssgg-gui" "$@"

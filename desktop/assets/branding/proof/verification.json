@@ -1,0 +1,223 @@
+{
+  "source": "ssgg.svg",
+  "renderer": "@resvg/resvg-js@2.6.2",
+  "pngDecoder": "sharp@0.34.5",
+  "icons": [
+    {
+      "file": "sizes/16.png",
+      "width": 16,
+      "height": 16,
+      "alpha": true,
+      "transparentPixels": 12,
+      "opaquePixels": 184,
+      "antialiasedPixels": 60,
+      "sha256": "e7159a3cd146ec940d7971ed78ed0e738cbc55c30a923968f35bb33c9d8df593"
+    },
+    {
+      "file": "sizes/24.png",
+      "width": 24,
+      "height": 24,
+      "alpha": true,
+      "transparentPixels": 48,
+      "opaquePixels": 452,
+      "antialiasedPixels": 76,
+      "sha256": "dbec973204d004a3cd5255254c7a9fc00527fa1227a156766e0fb18f5fef71ce"
+    },
+    {
+      "file": "sizes/32.png",
+      "width": 32,
+      "height": 32,
+      "alpha": true,
+      "transparentPixels": 164,
+      "opaquePixels": 824,
+      "antialiasedPixels": 36,
+      "sha256": "6f35a0bffdb08450a121a108c79530510fa067170da7f139f066aadedb32760e"
+    },
+    {
+      "file": "sizes/48.png",
+      "width": 48,
+      "height": 48,
+      "alpha": true,
+      "transparentPixels": 324,
+      "opaquePixels": 1828,
+      "antialiasedPixels": 152,
+      "sha256": "7a393e2c20badf658b01e5a5925b7c09315ba0404537fd693866bd0ffb5be3ba"
+    },
+    {
+      "file": "sizes/64.png",
+      "width": 64,
+      "height": 64,
+      "alpha": true,
+      "transparentPixels": 679,
+      "opaquePixels": 3316,
+      "antialiasedPixels": 101,
+      "sha256": "ec268cb2c30d7330c48c2a57ddeacef7e72e291366c784c5fde74e54e339b32f"
+    },
+    {
+      "file": "sizes/128.png",
+      "width": 128,
+      "height": 128,
+      "alpha": true,
+      "transparentPixels": 2780,
+      "opaquePixels": 13416,
+      "antialiasedPixels": 188,
+      "sha256": "0d68cc6d51e71e15cc72dc7bcd658bf845fc1237a5a53d4add8e0d4b7dff07a7"
+    },
+    {
+      "file": "sizes/256.png",
+      "width": 256,
+      "height": 256,
+      "alpha": true,
+      "transparentPixels": 11293,
+      "opaquePixels": 53868,
+      "antialiasedPixels": 375,
+      "sha256": "e6f6004fd46915176ed8a33a6da15c7d9cac2d37d40cfdd0f0409dfbc676522b"
+    },
+    {
+      "file": "sizes/512.png",
+      "width": 512,
+      "height": 512,
+      "alpha": true,
+      "transparentPixels": 45452,
+      "opaquePixels": 215966,
+      "antialiasedPixels": 726,
+      "sha256": "a7bb320c3f93e8cfeaf02372bc001f402dbd58c4607bba561fa3c0302bbf31f0"
+    },
+    {
+      "file": "ssgg.png",
+      "width": 512,
+      "height": 512,
+      "alpha": true,
+      "transparentPixels": 45452,
+      "opaquePixels": 215966,
+      "antialiasedPixels": 726,
+      "sha256": "a7bb320c3f93e8cfeaf02372bc001f402dbd58c4607bba561fa3c0302bbf31f0"
+    },
+    {
+      "file": "tray/light-16.png",
+      "width": 16,
+      "height": 16,
+      "alpha": true,
+      "transparentPixels": 164,
+      "opaquePixels": 30,
+      "antialiasedPixels": 62,
+      "sha256": "a494bb1fdaa7f601d7a727a6ca2ef5c2154c003e7c3620870f007998d731db94"
+    },
+    {
+      "file": "tray/light-22.png",
+      "width": 22,
+      "height": 22,
+      "alpha": true,
+      "transparentPixels": 320,
+      "opaquePixels": 70,
+      "antialiasedPixels": 94,
+      "sha256": "64024c3dbe551e91c4ea082ab61a17de4430bad8522851401bdfa801dde8da86"
+    },
+    {
+      "file": "tray/light-24.png",
+      "width": 24,
+      "height": 24,
+      "alpha": true,
+      "transparentPixels": 372,
+      "opaquePixels": 92,
+      "antialiasedPixels": 112,
+      "sha256": "707e380272023661ffae02d5d13064401a06b42ccfa089ab9a22e97c85e50a49"
+    },
+    {
+      "file": "tray/light-32.png",
+      "width": 32,
+      "height": 32,
+      "alpha": true,
+      "transparentPixels": 676,
+      "opaquePixels": 184,
+      "antialiasedPixels": 164,
+      "sha256": "ec3925b1a23b9e4f239b67e67dd11bc4ff42db66b89a17668bc351c2d1711b95"
+    },
+    {
+      "file": "tray/light-44.png",
+      "width": 44,
+      "height": 44,
+      "alpha": true,
+      "transparentPixels": 1303,
+      "opaquePixels": 399,
+      "antialiasedPixels": 234,
+      "sha256": "bff5ba897cc060c3ec6cfe3a9238a7a9e8ad87992d9abe1019ade48f58f0ebf7"
+    },
+    {
+      "file": "ssgg-tray-light.png",
+      "width": 22,
+      "height": 22,
+      "alpha": true,
+      "transparentPixels": 320,
+      "opaquePixels": 70,
+      "antialiasedPixels": 94,
+      "sha256": "64024c3dbe551e91c4ea082ab61a17de4430bad8522851401bdfa801dde8da86"
+    },
+    {
+      "file": "tray/dark-16.png",
+      "width": 16,
+      "height": 16,
+      "alpha": true,
+      "transparentPixels": 164,
+      "opaquePixels": 30,
+      "antialiasedPixels": 62,
+      "sha256": "f09b52b152e25ec08d53ddfce68af073897b1c9382db70af33c357d6cf67118a"
+    },
+    {
+      "file": "tray/dark-22.png",
+      "width": 22,
+      "height": 22,
+      "alpha": true,
+      "transparentPixels": 320,
+      "opaquePixels": 70,
+      "antialiasedPixels": 94,
+      "sha256": "ac66e6d8cb3ecd8effd4a63d3cb57aa470e2ea5b1b0c076f41f510ec7a9274ef"
+    },
+    {
+      "file": "tray/dark-24.png",
+      "width": 24,
+      "height": 24,
+      "alpha": true,
+      "transparentPixels": 372,
+      "opaquePixels": 92,
+      "antialiasedPixels": 112,
+      "sha256": "9dcf7525858d9127a4126a0aa3345ffa8558b4978ef78008378b3d6fc5209e2a"
+    },
+    {
+      "file": "tray/dark-32.png",
+      "width": 32,
+      "height": 32,
+      "alpha": true,
+      "transparentPixels": 676,
+      "opaquePixels": 184,
+      "antialiasedPixels": 164,
+      "sha256": "401801ba8a493276001409cda1d0f13cda1c9f76c626b75bbe1eff5c14ece8f5"
+    },
+    {
+      "file": "tray/dark-44.png",
+      "width": 44,
+      "height": 44,
+      "alpha": true,
+      "transparentPixels": 1303,
+      "opaquePixels": 399,
+      "antialiasedPixels": 234,
+      "sha256": "ad9ef7f0365fc5091f373e4e2a334ca763a0d85896d3fda63f43013dbdc2db74"
+    },
+    {
+      "file": "ssgg-tray-dark.png",
+      "width": 22,
+      "height": 22,
+      "alpha": true,
+      "transparentPixels": 320,
+      "opaquePixels": 70,
+      "antialiasedPixels": 94,
+      "sha256": "ac66e6d8cb3ecd8effd4a63d3cb57aa470e2ea5b1b0c076f41f510ec7a9274ef"
+    }
+  ],
+  "symbolicSizesVerified": [
+    16,
+    22,
+    32
+  ],
+  "traySilhouettesMatch": true
+}

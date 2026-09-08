@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">SSGG — Split signal</title>
+  <desc id="desc">Two opposing channel ribbons form a split headset. A graphite shell holds a porcelain channel and a mint channel.</desc>
+  <metadata>Original vector artwork created for SSGG. MIT license; see PROVENANCE.md. Not a SteelSeries trademark or product photograph.</metadata>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="#20282d"/>
+  <g id="signal" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path id="channel-a" stroke="#f8fafb" d="M28 16H26C18.268 16 12 22.268 12 30V39C12 43.971 16.029 48 21 48H25V32H20"/>
+    <path id="channel-b" stroke="#96dfc8" d="M36 48H38C45.732 48 52 41.732 52 34V25C52 20.029 47.971 16 43 16H39V32H44"/>
+  </g>
+</svg>
