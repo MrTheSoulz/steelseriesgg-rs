@@ -74,6 +74,12 @@ impl From<ChatMixSample> for Sample {
 pub trait HardwareDevice: Send {
     fn read_event(&mut self, timeout_ms: i32) -> crate::Result<Option<Report>>;
     fn request_status(&mut self) -> crate::Result<Status>;
+    fn request_status_cancellable(&mut self, is_cancelled: &dyn Fn() -> bool) -> crate::Result<Status> {
+        if is_cancelled() {
+            return Err(crate::Error::DeviceCommunication("Status query cancelled".into()));
+        }
+        self.request_status()
+    }
     fn set_sidetone(&mut self, level: u8, observe: &mut dyn FnMut(Report) -> crate::Result<()>) -> crate::Result<u8>;
     fn set_auto_off(&mut self, minutes: u8) -> crate::Result<()>;
 }
@@ -83,6 +89,9 @@ impl<T: Transport> HardwareDevice for Nova7Gen2<T> {
     }
     fn request_status(&mut self) -> crate::Result<Status> {
         Nova7Gen2::request_status(self)
+    }
+    fn request_status_cancellable(&mut self, is_cancelled: &dyn Fn() -> bool) -> crate::Result<Status> {
+        Nova7Gen2::request_status_cancellable(self, is_cancelled)
     }
     fn set_sidetone(&mut self, level: u8, observe: &mut dyn FnMut(Report) -> crate::Result<()>) -> crate::Result<u8> {
         self.set_sidetone_level(level)?;
@@ -232,7 +241,10 @@ impl Controller {
                     return Ok(());
                 }
                 shared.lock().state.hardware_acquired = true;
-                let status = device.request_status().map_err(|e| e.to_string())?;
+                let is_cancelled = || cancelled.load(Ordering::Acquire);
+                let status = device
+                    .request_status_cancellable(&is_cancelled)
+                    .map_err(|e| e.to_string())?;
                 accept(&shared, Report::Status(status))?;
                 complete(&shared);
                 let mut next_status = Instant::now() + STATUS_POLL_INTERVAL;
@@ -265,7 +277,11 @@ impl Controller {
                         // Recover wheel packets consumed by the settings query.
                         accept(
                             &shared,
-                            Report::Status(device.request_status().map_err(|e| e.to_string())?),
+                            Report::Status(
+                                device
+                                    .request_status_cancellable(&is_cancelled)
+                                    .map_err(|e| e.to_string())?,
+                            ),
                         )?;
                         shared.lock().state.last_command = Some("completed".into());
                         complete(&shared);
@@ -273,7 +289,11 @@ impl Controller {
                     } else if Instant::now() >= next_status {
                         accept(
                             &shared,
-                            Report::Status(device.request_status().map_err(|e| e.to_string())?),
+                            Report::Status(
+                                device
+                                    .request_status_cancellable(&is_cancelled)
+                                    .map_err(|e| e.to_string())?,
+                            ),
                         )?;
                         next_status = Instant::now() + STATUS_POLL_INTERVAL;
                     } else if let Some(report) = device.read_event(50).map_err(|e| e.to_string())? {
@@ -285,7 +305,9 @@ impl Controller {
             let result = run();
             let mut shared = shared.lock();
             invalidate(&mut shared.state);
-            if let Err(e) = result {
+            if let Err(e) = result
+                && !cancelled.load(Ordering::Acquire)
+            {
                 shared.state.error = Some(e);
                 shared.state.last_command = Some("failed".into());
             }
