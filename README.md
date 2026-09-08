@@ -15,7 +15,7 @@ Use the `.deb` supplied with the beta build. CI packages are available in the `s
 Open the `.deb` with your package installer, or run this from the directory containing it:
 
 ```sh
-sudo apt install ./ssgg-gui_0.1.0_amd64.deb
+sudo apt install ./ssgg-gui_0.1.1_amd64.deb
 ```
 
 Then open **SSGG** from Ubuntu's application launcher.

@@ -32,7 +32,7 @@ Build on Ubuntu 24.04 amd64 for the compatibility baseline. The desktop binary h
 cd desktop
 npm ci --include=dev
 npm run package:app       # Electron + renderer + matching Rust service
-npm run package:deb       # also builds and checks release/ssgg-gui_0.1.0_amd64.deb
+npm run package:deb       # also builds and checks release/ssgg-gui_0.1.1_amd64.deb
 npm run test:packaging
 ```
 
