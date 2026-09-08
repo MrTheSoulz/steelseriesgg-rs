@@ -73,12 +73,6 @@
     margin-left: auto;
     font-variant-numeric: tabular-nums;
   }
-  .lighting-permission {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-  }
   .lighting-history {
     font-variant-numeric: tabular-nums;
   }

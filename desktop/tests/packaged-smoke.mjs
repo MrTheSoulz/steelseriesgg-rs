@@ -186,7 +186,7 @@ try {
   assert.equal(safe.transport, "sidecar");
   await page.evaluate(() => window.ssgg.getState());
   assert.equal(connections, previousConnections);
-  for (const method of ["setStream", "setGroup", "setChatmix", "setDevice", "saveProfile", "applyProfile"]) {
+  for (const method of ["setStream", "setGroup", "setChatmix", "setDevice", "applyLighting", "saveProfile", "applyProfile"]) {
     const error = await page.evaluate(async (method) => {
       try {
         await window.ssgg[method]({});

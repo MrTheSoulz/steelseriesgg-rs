@@ -272,6 +272,7 @@ app.whenReady().then(async () => {
     "ssgg:group": "group.set",
     "ssgg:chatmix": "chatmix.set",
     "ssgg:device": "device.set",
+    "ssgg:lighting": "lighting.apply",
   };
   for (const [channel, method] of Object.entries(mutations))
     handle(channel, async (params) => {

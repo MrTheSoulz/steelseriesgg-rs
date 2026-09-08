@@ -24,7 +24,6 @@ export default function LightingControls({
   const lastSent = device.lighting?.lastSent;
   const [color, setColor] = useState(lastSent ? hex(lastSent.color) : "#8055ff");
   const [brightness, setBrightness] = useState(lastSent?.brightness ?? 75);
-  const [allowed, setAllowed] = useState(false);
   const [pending, setPending] = useState(false);
   const capability = device.capabilities.rgb;
   if (!capability?.applicable) return null;
@@ -38,14 +37,13 @@ export default function LightingControls({
   const inProgress = pending || !!device.lighting?.pending;
   const disabled = readOnly || busy || inProgress || !device.connected || !mutate;
   async function apply() {
-    if (disabled || !allowed || !mutate) return;
+    if (disabled || !mutate) return;
     const value: LightingApply = {
       id: device.id,
       allowHardware: true,
       brightness,
       color: [parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16)],
     };
-    setAllowed(false);
     setPending(true);
     try {
       await mutate(
@@ -96,19 +94,15 @@ export default function LightingControls({
             Off
           </button>
         </div>
-        <label className="lighting-permission">
-          <input type="checkbox" checked={allowed} onChange={(e) => setAllowed(e.target.checked)} />
-          Allow this lighting write to {device.name}
-        </label>
       </fieldset>
       <div className="lighting-apply">
-        <button disabled={disabled || !allowed} onClick={() => void apply()}>
+        <button disabled={disabled} onClick={() => void apply()}>
           {inProgress ? "Applying lighting…" : "Apply lighting"}
         </button>
         <p>
           {readOnly
             ? "Read-only session: hardware writes are disabled."
-            : "Close other RGB software first. Permission resets after each Apply."}
+            : "Close other RGB software first. Apply lighting sends this color and brightness to your keyboard once."}
         </p>
       </div>
       {device.lighting?.pending && <p role="status">Lighting write in progress…</p>}

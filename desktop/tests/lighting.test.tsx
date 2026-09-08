@@ -58,7 +58,7 @@ it("validates the named one-shot RGB command and preserves capability/sent-only 
   });
   expect(pending.devices[0].lighting?.pending).toBe(true);
 });
-it("only sends on explicit permission plus Apply; edits, discovery and device switches send nothing", async () => {
+it("uses one explicit Apply click as consent; edits, discovery and device switches send nothing", async () => {
   const applyLighting = vi.fn(async () => {});
   window.ssgg = { applyLighting, getArtwork: vi.fn(async () => null) } as unknown as DesktopBridge;
   const mutate = async (action: (bridge: DesktopBridge) => Promise<unknown>) => {
@@ -68,20 +68,19 @@ it("only sends on explicit permission plus Apply; edits, discovery and device sw
   const props = { devices: [device], selected: device.id, onSelect: vi.fn(), mutate };
   const { rerender } = render(<Devices {...props} />);
   await act(async () => {});
-  expect(screen.getByRole("button", { name: "Apply lighting" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Apply lighting" })).toBeEnabled();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Lighting color"), { target: { value: "#ff8000" } });
   fireEvent.change(screen.getByRole("slider", { name: "Lighting brightness" }), { target: { value: "50" } });
   expect(applyLighting).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("checkbox", { name: /Allow this lighting write/ }));
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply lighting" }));
   });
   expect(applyLighting).toHaveBeenCalledExactlyOnceWith(request);
-  expect(screen.getByRole("checkbox", { name: /Allow this lighting write/ })).not.toBeChecked();
-  fireEvent.click(screen.getByRole("checkbox", { name: /Allow this lighting write/ }));
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   rerender(<Devices {...props} devices={[{ ...device, id: "1038:1642:second" }]} selected="1038:1642:second" />);
   await act(async () => {});
-  expect(screen.getByRole("checkbox", { name: /Allow this lighting write/ })).not.toBeChecked();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(applyLighting).toHaveBeenCalledTimes(1);
 });
 it("shows only relevant keyboard controls and makes off/presets explicit drafts", async () => {
@@ -96,7 +95,6 @@ it("shows only relevant keyboard controls and makes off/presets explicit drafts"
   fireEvent.click(screen.getByRole("button", { name: "White" }));
   fireEvent.click(screen.getByRole("button", { name: "Off" }));
   expect(applyLighting).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("checkbox", { name: /Allow this lighting write/ }));
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply lighting" }));
   });
@@ -115,7 +113,7 @@ it("disables RGB in read-only, busy, disconnected and unavailable-bridge states"
     rerender(<Devices {...props} {...state} />);
     await act(async () => {});
     expect(screen.getByLabelText("Lighting color")).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: /Allow this lighting write/ })).toBeDisabled();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply lighting" })).toBeDisabled();
   }
   expect(mutate).not.toHaveBeenCalled();
