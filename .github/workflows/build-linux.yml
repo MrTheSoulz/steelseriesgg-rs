@@ -1,6 +1,8 @@
-name: Build Linux / Arch
+name: Build Linux packages
 
 on:
+  push:
+    branches: [feat/install-and-use, feat/ubuntu-packaging, fix/headset-status-expiry]
   workflow_dispatch:
     inputs:
       features:
@@ -12,7 +14,136 @@ permissions:
   contents: read
 
 jobs:
+  ubuntu-desktop:
+    name: Ubuntu 24.04 desktop amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: "-Ctarget-cpu=x86-64"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install build and isolated test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libudev-dev libpulse-dev unzip binutils apparmor desktop-file-utils xvfb xauth x11-utils dbus-x11
+      - name: Install locked JavaScript dependencies
+        working-directory: desktop
+        run: npm ci --include=dev
+      - name: Unit and native safety gates
+        run: |
+          cargo test --locked --lib desktop::hardware::tests
+          cargo test --locked --test nova7_gen2 --test desktop_hardware --test desktop_review --test desktop_lighting
+          cargo clippy --all-targets --locked -- -D warnings
+          cd desktop
+          npm run typecheck
+          npm test
+          npm run test:packaging
+      - name: Build real self-contained app and Debian archive
+        working-directory: desktop
+        run: |
+          npm run package:deb -- --max-glibc 2.39
+          tar -C release -cJf release/ssgg-gui-linux-amd64.tar.xz app
+          cd release
+          sha256sum ssgg-gui-linux-amd64.tar.xz > ssgg-gui-linux-amd64.tar.xz.sha256
+      - name: Install the package on the disposable Ubuntu runner
+        run: |
+          sudo apt-get install -y ./desktop/release/ssgg-gui_*_amd64.deb
+          test "$(stat -c '%U:%G:%a' /opt/ssgg/chrome-sandbox)" = root:root:4755
+          desktop-file-validate /usr/share/applications/io.github.MrTheSoulz.SSGG.desktop
+          ldd /opt/ssgg/ssgg-gui
+          ldd /opt/ssgg/resources/ssgg-desktop
+          test -x /usr/bin/pactl
+          for package in "$PWD"/desktop/release/*.deb; do
+            node desktop/scripts/verify-deb.mjs "$package" --runtime
+          done
+      - name: Exercise the installed launcher without sandbox exceptions
+        working-directory: desktop
+        run: |
+          unset CHROME_DEVEL_SANDBOX ELECTRON_RUN_AS_NODE
+          node scripts/test-session.mjs node tests/packaged-smoke.mjs /usr/bin/ssgg-gui artifacts/ubuntu-installed.json
+      - name: Remove package without touching user state or legacy services
+        run: |
+          mkdir -p "$HOME/.config/ssgg-desktop"
+          printf 'package-removal-sentinel\n' > "$HOME/.config/ssgg-desktop/keep-test"
+          sudo apt-get purge -y ssgg-gui
+          test -f "$HOME/.config/ssgg-desktop/keep-test"
+          test ! -e /opt/ssgg/ssgg-gui
+          test ! -e /usr/share/applications/io.github.MrTheSoulz.SSGG.desktop
+          test ! -e /usr/lib/udev/rules.d/70-ssgg.rules
+          test ! -e /etc/apparmor.d/io.github.MrTheSoulz.SSGG
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ssgg-ubuntu-24.04-amd64
+          path: |
+            desktop/release/*.deb
+            desktop/release/*.sha256
+            desktop/release/*.tar.xz
+            desktop/artifacts/ubuntu-installed.json
+          if-no-files-found: error
+          retention-days: 30
+  snap-experimental:
+    name: Experimental strict Snap (build only)
+    needs: ubuntu-desktop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: ssgg-ubuntu-24.04-amd64
+          path: snap-input
+      - name: Install Snap build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils squashfs-tools python3-yaml
+      - name: Prepare the tested standalone application
+        run: |
+          (cd snap-input/release && sha256sum -c ssgg-gui-linux-amd64.tar.xz.sha256)
+          mkdir -p desktop/release
+          tar -xJf snap-input/release/ssgg-gui-linux-amd64.tar.xz -C desktop/release
+          node --test snap/tests/package-snap.test.mjs
+          node desktop/scripts/package-snap.mjs --prepare-only
+      - name: Build in the disposable matching-base runner
+        working-directory: desktop/release/snap-project
+        run: |
+          sudo snap install snapcraft --classic
+          sudo snapcraft pack --destructive-mode
+      - name: Verify the real Snap payload without claiming installed usability
+        working-directory: desktop/release/snap-project
+        run: |
+          shopt -s nullglob
+          packages=(*.snap)
+          test "${#packages[@]}" = 1
+          package="${packages[0]}"
+          unsquashfs -cat "$package" meta/snap.yaml > snap-metadata.yaml
+          /usr/bin/python3 -c 'import yaml; m=yaml.safe_load(open("snap-metadata.yaml")); assert m["confinement"] == "strict" and m["base"] == "core24"'
+          unsquashfs -cat "$package" app/ssgg-gui >/dev/null
+          unsquashfs -cat "$package" app/resources/ssgg-desktop >/dev/null
+          unsquashfs -cat "$package" usr/bin/pactl >/dev/null
+          sha256sum "$package" > "$package.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ssgg-experimental-strict-snap-amd64
+          path: |
+            desktop/release/snap-project/*.snap
+            desktop/release/snap-project/*.sha256
+            desktop/release/snap-project/snap-metadata.yaml
+          if-no-files-found: error
+          retention-days: 30
   build-linux:
+    if: github.event_name == 'workflow_dispatch'
     name: Build Linux / Arch x86_64
     runs-on: ubuntu-latest
     container:

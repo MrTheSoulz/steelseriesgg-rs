@@ -1,5 +1,7 @@
+/// <reference types="vite/client" />
 import { useEffect, useRef, useState } from "react";
-import { SlidersHorizontal, Headphones, Settings2, Layers3, Keyboard, Usb, Radio, RefreshCw } from "lucide-react";
+import { SlidersHorizontal, Headphones, Settings2, Layers3, Keyboard, Usb, RefreshCw } from "lucide-react";
+import brandIcon from "../assets/branding/ssgg.svg";
 import type { Snapshot, RuntimeInfo, DesktopBridge } from "./shared/contracts";
 import Mixer from "./Mixer";
 import Devices from "./Devices";
@@ -82,7 +84,7 @@ export default function App() {
       <aside className="rail">
         <button className="brand" onClick={() => setTab("mixer")} aria-label="SSGG home">
           <span className="brand-mark">
-            <Radio size={25} />
+            <img src={brandIcon} width={25} height={25} alt="" />
           </span>
           ssgg<span className="brand-dot">.</span>
         </button>
@@ -212,7 +214,15 @@ export default function App() {
               mutate={mutate}
             />
           ) : (
-            <Mixer snapshot={snapshot} busy={busy} loading={loading} mutate={mutate} />
+            <Mixer
+              snapshot={snapshot}
+              busy={busy}
+              loading={loading}
+              mutate={mutate}
+              selectedDevice={selectedDevice}
+              onChooseDevice={() => setTab("devices")}
+              readOnly={runtime?.readOnly}
+            />
           )}
         </div>
         <div className="save-status" role="status">

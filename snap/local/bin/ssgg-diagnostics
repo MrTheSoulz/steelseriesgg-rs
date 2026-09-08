@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+printf '%s\n' \
+  'SSGG strict Snap permission diagnostics (read-only)' \
+  'On the host, inspect: snap connections ssgg' \
+  'HID: snap interface hidraw lists available system-provided device slots.' \
+  'No matching slot means this strict Snap cannot access that device.' \
+  'If a matching slot exists: sudo snap connect ssgg:hidraw PROVIDER:SLOT' \
+  'Replace PROVIDER:SLOT with the exact matching slot; never guess a device number.' \
+  'Connecting raw-usb or changing ordinary udev permissions does not create a hidraw slot.' \
+  'Electron sandbox: browser-support with allow-sandbox=true needs publisher review/permission.' \
+  'Audio: audio-playback does not guarantee enumeration or control of other applications.' \
+  'No reboot, audio restart, hardware open, or setting changes are performed by this command.'
+if [ -n "${SNAP:-}" ] && command -v snapctl >/dev/null 2>&1; then
+    for plug in hidraw audio-playback; do
+        if snapctl is-connected "$plug"; then
+            printf '%s: connected\n' "$plug"
+        else
+            printf '%s: not connected\n' "$plug"
+        fi
+    done
+fi
+case "${1:-}" in
+    '') ;;
+    --audio)
+        : "${SNAP:?Run snap run ssgg.diagnostics --audio}"
+        : "${XDG_RUNTIME_DIR:?Missing Snap runtime directory}"
+        export PULSE_SERVER="${PULSE_SERVER:-unix:$XDG_RUNTIME_DIR/../pulse/native}"
+        "$SNAP/usr/bin/pactl" info
+        "$SNAP/usr/bin/pactl" --format=json list sinks
+        "$SNAP/usr/bin/pactl" --format=json list sink-inputs
+        ;;
+    *) printf '%s\n' 'Usage: ssgg.diagnostics [--audio]' >&2; exit 2 ;;
+esac

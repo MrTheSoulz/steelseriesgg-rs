@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SSGG
+Comment=SteelSeries devices and Linux audio (experimental strict Snap)
+Exec=ssgg
+Icon=${SNAP}/usr/share/icons/hicolor/scalable/apps/ssgg.svg
+Terminal=false
+Categories=Settings;HardwareSettings;AudioVideo;
+StartupWMClass=ssgg-desktop

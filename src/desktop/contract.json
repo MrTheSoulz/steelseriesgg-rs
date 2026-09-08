@@ -171,6 +171,16 @@
     },
     "result": "full state with physical; asynchronous acceptance, inspect physical.pending/error/lastCommand for completion. All parameters validated before enqueue/open; no device settings persisted. Disable cannot be combined with writes."
   },
+  "lighting.apply": {
+    "params": {
+      "id": "exact devices.list id, includes hidraw node generation; only 1038:1642 interface 1 (Apex Pro TKL Gen 3 wired)",
+      "allowHardware": "required literal true; permission for this single Apply, not persisted",
+      "color": "required [red,green,blue], exactly three integers 0..255",
+      "brightness": "required integer 0..100; scales color, zero sends black"
+    },
+    "result": "{pending:true}: request accepted, NOT completion. Poll devices[].lighting.pending/error/lastSent; lastSent {color:[r,g,b],brightness:N} is populated only after successful feature sends, never readback. Partial send is not success. History is cleared on disconnect/service restart.",
+    "policy": "No automatic acquisition, startup/reconnect/profile replay, effects, queries or on-board save. Each Apply uses an independent one-shot worker (HID open/ioctl cannot stall the headset/audio service), opens exactly one matching interface, holds a node-level advisory lock, sends 643-byte 0x4b init then 643-byte 0x40 direct feature reports, closes without destructor writes. Other RGB programs must be closed. USB reconnect restores on-board lighting. Source-derived from OpenRGB 19112cdeff94086fa994c4a9cf45ec5786a599bf, physical RGB validation pending. 1628 experimental implementation/gate is intentionally not used. Safe mode rejects before enumeration/open and cancels any remaining report boundaries of an in-flight request. No blocking join on service shutdown. Headset/audio owners untouched."
+  },
   "physical": {
     "location": "state.get.result.physical; selected devices entry also has physical",
     "fields": "deviceId, hardwareEnabled, hardwareAcquired, connected (wireless tri-state), battery, charging, sample {gamePercent,chatPercent,balance,receivedAtMs}|null, statusAtMs|null, stale, pending, sidetone|null, autoOffMinutesSent|null, lastCommand|null, error|null",

@@ -225,20 +225,69 @@ impl<T: Transport> Nova7Gen2<T> {
     /// Actively query battery/power/wheel. This DOES write a query to HID.
     /// Bound both elapsed time and report count when unsolicited traffic interleaves.
     pub fn request_status(&mut self) -> Result<Status> {
-        self.send_command(Nova7Gen2Command::Status)?;
+        self.request_status_cancellable(|| false)
+    }
+
+    /// Single-owner cancellation is checked at every read/re-query boundary.
+    pub fn request_status_cancellable(&mut self, is_cancelled: impl Fn() -> bool) -> Result<Status> {
+        const REQUERY_INTERVAL: Duration = Duration::from_millis(100);
+        const MAX_QUERIES: usize = 10;
+        // Allow a buffered burst (hidraw can queue 64 reports) plus its reply,
+        // but keep a hard total cap even if unrelated traffic never stops.
+        const MAX_REPORTS: usize = 128;
         let deadline = Instant::now() + Duration::from_millis(1000);
-        for _ in 0..16 {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                break;
+        if is_cancelled() {
+            return Err(protocol_error("status query cancelled"));
+        }
+        self.send_command(Nova7Gen2Command::Status)?;
+        let mut next_query = Instant::now() + REQUERY_INTERVAL;
+        let mut queries = 1;
+        let mut reports = 0;
+        loop {
+            if is_cancelled() {
+                return Err(protocol_error("status query cancelled"));
             }
-            match self.read_event(remaining.as_millis().clamp(1, 1000) as i32)? {
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(protocol_error("timed out waiting for status"));
+            }
+            // A status reply can be lost while wheel events interleave. Re-query
+            // only read-only status, never settings, within the original deadline.
+            if queries < MAX_QUERIES && now >= next_query {
+                self.send_command(Nova7Gen2Command::Status)?;
+                queries += 1;
+                next_query = Instant::now() + REQUERY_INTERVAL;
+            }
+            let wake = if queries < MAX_QUERIES {
+                next_query.min(deadline)
+            } else {
+                deadline
+            };
+            let remaining = wake.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                continue;
+            }
+            let timeout_ms = remaining.as_nanos().div_ceil(1_000_000).min(1000) as i32;
+            let report = self.read_event(timeout_ms)?;
+            if is_cancelled() {
+                return Err(protocol_error("status query cancelled"));
+            }
+            if Instant::now() >= deadline {
+                return Err(protocol_error("timed out waiting for status"));
+            }
+            match report {
                 Some(Report::Status(status)) => return Ok(status),
-                None => break,
-                _ => {}
+                Some(_) => {
+                    reports += 1;
+                    if reports >= MAX_REPORTS {
+                        return Err(protocol_error("status report budget exhausted"));
+                    }
+                }
+                // A transport may return early. Do not turn an empty read into a
+                // busy loop or an unpaced write; the next query still has its slot.
+                None => std::thread::sleep(wake.saturating_duration_since(Instant::now())),
             }
         }
-        Err(protocol_error("timed out waiting for status"))
     }
 }
 

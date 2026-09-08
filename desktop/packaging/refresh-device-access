@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+# Reevaluate only existing SteelSeries hidraw nodes, not USB devices or audio.
+for node in /sys/class/hidraw/hidraw*; do
+  [ -e "$node/device" ] || continue
+  ancestor=$(readlink -f "$node/device") || continue
+  while [ "$ancestor" != /sys ] && [ "$ancestor" != / ]; do
+    if [ -r "$ancestor/idVendor" ]; then
+      IFS= read -r vendor < "$ancestor/idVendor" || vendor=
+      if [ "$vendor" = 1038 ]; then
+        udevadm trigger --action=change "$node"
+      fi
+      break
+    fi
+    ancestor=${ancestor%/*}
+  done
+done
+udevadm settle --timeout=10

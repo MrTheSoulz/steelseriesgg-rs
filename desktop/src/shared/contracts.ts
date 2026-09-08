@@ -18,12 +18,19 @@ const patchFields = <T extends z.ZodRawShape>(shape: T) =>
     .strict()
     .refine((v) => Object.keys(v).some((k) => k !== "id"), "Choose a setting to change");
 const empty = z.object({}).strict();
+const rgbByte = z.number().int().min(0).max(255);
+const lightingSentSchema = z
+  .object({ color: z.tuple([rgbByte, rgbByte, rgbByte]), brightness: z.number().int().min(0).max(100) })
+  .strict();
+const lightingApplySchema = lightingSentSchema.extend({ id: identifier, allowHardware: z.literal(true) }).strict();
+export type LightingApply = z.infer<typeof lightingApplySchema>;
 const schemas: Record<string, z.ZodTypeAny> = {
   "state.get": empty,
   "streams.list": empty,
   "settings.get": empty,
   "profiles.list": empty,
   "devices.list": empty,
+  "lighting.apply": lightingApplySchema,
   "stream.set": patchFields({
     id: identifier,
     volume: gain.optional(),
@@ -116,10 +123,18 @@ export const deviceSchema = z.object({
   kind: z.enum(["headset", "keyboard", "other"]).default("other"),
   battery: z.number().min(0).max(100).nullable().optional(),
   physical: physicalSchema.optional(),
+  lighting: z
+    .object({
+      lastSent: lightingSentSchema.nullable().optional(),
+      pending: z.boolean().optional(),
+      error: z.string().max(2048).nullable().optional(),
+    })
+    .optional(),
   capabilities: z
     .record(
       z.object({
         supported: z.boolean(),
+        applicable: z.boolean().optional(),
         reason: z.string().max(1024).optional(),
         locallyValidated: z.boolean().optional(),
       }),
@@ -170,6 +185,7 @@ export interface DesktopBridge {
     autoOffMinutes?: number;
     statusRefresh?: boolean;
   }): Promise<void>;
+  applyLighting(value: LightingApply): Promise<void>;
   saveProfile(name: string): Promise<void>;
   applyProfile(name: string): Promise<void>;
   setCloseToTray(enabled: boolean): Promise<RuntimeInfo>;

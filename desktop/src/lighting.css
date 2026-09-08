@@ -1,0 +1,82 @@
+@layer components {
+  .lighting-controls {
+    margin: 24px 0;
+    padding: 22px 0;
+    border-block: 1px solid var(--line, #d1d9de);
+  }
+  .lighting-controls h2 {
+    margin: 0 0 8px;
+    font-size: 21px;
+  }
+  .lighting-controls p {
+    color: var(--muted, #596770);
+    font-size: 13px;
+    line-height: 1.5;
+    max-width: 75ch;
+  }
+  .lighting-controls fieldset {
+    padding: 0;
+    margin: 18px 0;
+    border: 0;
+    min-width: 0;
+  }
+  .lighting-presets,
+  .lighting-values,
+  .lighting-apply {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .lighting-presets button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .lighting-presets button[aria-pressed="true"] {
+    outline: 2px solid var(--accent, #166c60);
+    outline-offset: 2px;
+  }
+  .lighting-swatch {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    border: 1px solid #596770;
+  }
+  .lighting-values {
+    margin: 20px 0;
+    gap: 20px;
+  }
+  .lighting-values label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .lighting-values input[type="color"] {
+    width: 48px;
+    height: 38px;
+    padding: 3px;
+    cursor: pointer;
+  }
+  .lighting-brightness {
+    flex-wrap: wrap;
+    flex: 1 1 230px;
+    max-width: 340px;
+  }
+  .lighting-brightness input {
+    width: 100%;
+    min-width: 0;
+    accent-color: #166c60;
+  }
+  .lighting-brightness output {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+  .lighting-history {
+    font-variant-numeric: tabular-nums;
+  }
+  .lighting-apply p {
+    margin: 0;
+  }
+}

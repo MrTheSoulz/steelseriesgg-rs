@@ -7,13 +7,13 @@ import {
   ImagePlus,
   SlidersHorizontal,
   Mic,
-  Lightbulb,
   Battery,
   ShieldCheck,
 } from "lucide-react";
 import type { Device, Snapshot } from "./shared/contracts";
 import type { Mutate } from "./Mixer";
 import HardwareControls from "./HardwareControls";
+import LightingControls from "./LightingControls";
 import { artworkFor } from "./shared/artwork-catalog";
 export default function Devices({
   devices,
@@ -184,34 +184,35 @@ export default function Devices({
           : "No verified manufacturer photo is catalogued for this exact model. Choose your own image; SSGG will not substitute a different model."}
       </p>
       <section className="hardware-controls">
-        <HardwareControls
-          key={device.id}
-          device={device}
-          physical={device.physical ?? (physical?.deviceId === device.id || !physical?.deviceId ? physical : undefined)}
-          bridgeAvailable={!!physical}
-          readOnly={readOnly}
-          busy={saving}
-          mutate={mutate}
-        />
+        {device.kind === "headset" && (
+          <HardwareControls
+            key={device.id}
+            device={device}
+            physical={
+              device.physical ?? (physical?.deviceId === device.id || !physical?.deviceId ? physical : undefined)
+            }
+            bridgeAvailable={!!physical}
+            readOnly={readOnly}
+            busy={saving}
+            mutate={mutate}
+          />
+        )}
         <div className="section-heading">
           <div>
             <h2>Device controls</h2>
             <p>Capability status, not promises.</p>
           </div>
         </div>
-        <div className="capability-row">
-          <Lightbulb size={21} />
-          <div>
-            <h3>RGB lighting</h3>
-            <p>{unavailable("rgb", "RGB control is not exposed for this device by the desktop bridge.")}</p>
-          </div>
-          <button disabled aria-describedby="rgb-reason">
-            RGB lighting
-          </button>
-          <span id="rgb-reason" className="sr-only">
-            Unsupported by the current desktop bridge
-          </span>
-        </div>
+        <LightingControls
+          key={`${device.id}:${device.connected}`}
+          device={device}
+          readOnly={readOnly}
+          busy={saving}
+          mutate={mutate}
+        />
+        {!device.capabilities.rgb?.applicable && (
+          <p className="capability-note">{unavailable("rgb", "RGB is unavailable for this model.")}</p>
+        )}
         <div className="capability-row">
           <SlidersHorizontal size={21} />
           <div>

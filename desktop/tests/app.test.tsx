@@ -1,6 +1,7 @@
 import { it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import App from "../src/App";
+import brandIcon from "../assets/branding/ssgg.svg";
 import fixture from "./fixture.json";
 import type { DesktopBridge, Snapshot } from "../src/shared/contracts";
 function testBridge() {
@@ -35,6 +36,14 @@ function testBridge() {
   window.ssgg = bridge;
   return bridge;
 }
+it("shows the bundled original logo in the accessible SSGG home button", async () => {
+  testBridge();
+  render(<App />);
+  await screen.findByRole("combobox", { name: "Google Chrome group" });
+  const image = screen.getByRole("button", { name: "SSGG home" }).querySelector("img");
+  expect(image).toHaveAttribute("src", brandIcon);
+  expect(image).toHaveAttribute("alt", "");
+});
 it("assigns Chrome to a user-selected group and commits native gain through the bridge", async () => {
   const bridge = testBridge();
   render(<App />);
@@ -54,7 +63,7 @@ it("shows the exact connected model and honest unsupported device controls", asy
   await screen.findByRole("combobox", { name: "Google Chrome group" });
   fireEvent.click(screen.getByRole("button", { name: "Devices" }));
   expect(await screen.findByRole("heading", { name: "Arctis Nova 7 Gen 2" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "RGB lighting" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "RGB lighting" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Hardware equalizer" })).toBeDisabled();
   expect(screen.getByText("Battery unavailable")).toBeVisible();
   expect(screen.getByRole("button", { name: "Download official photo" })).toBeEnabled();
