@@ -1,5 +1,7 @@
 //! Headset device support (Arctis series).
 
+pub mod nova7_gen2;
+
 use super::{Device, DeviceInfo, DeviceType, write_padded_report};
 use crate::{Error, Result};
 use hidapi::HidDevice;

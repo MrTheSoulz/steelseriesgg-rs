@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+if [ "$1" = configure ]; then
+  # dpkg normally restores these from the archive; explicitly retain the
+  # genuine Chromium helper's expected ownership/mode across upgrades.
+  chown root:root /opt/ssgg/chrome-sandbox
+  chmod 4755 /opt/ssgg/chrome-sandbox
+  if command -v apparmor_parser >/dev/null 2>&1 && [ -d /sys/kernel/security/apparmor ]; then
+    apparmor_parser -r /etc/apparmor.d/io.github.MrTheSoulz.SSGG
+  fi
+  if [ -d /run/udev/control ] || [ -S /run/udev/control ]; then
+    udevadm control --reload-rules
+    /usr/lib/ssgg-gui/refresh-device-access
+  fi
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor
+fi

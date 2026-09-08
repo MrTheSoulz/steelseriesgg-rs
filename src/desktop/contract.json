@@ -1,0 +1,215 @@
+{
+  "version": 1,
+  "transport": "JSON-lines stdio: ssgg-desktop --stdio; Unix socket default $XDG_RUNTIME_DIR/ssgg-desktop/service.sock; request {id,method,params}; response {id,result} or {id,error:{code,message}}. Replies only, no unsolicited events. Poll state.get.",
+  "state.get": {
+    "params": {},
+    "result": {
+      "streams": [
+        {
+          "id": 12,
+          "appKey": "[\"firefox\",\"Firefox\",\"music\"]",
+          "name": "AudioStream",
+          "appName": "Firefox",
+          "volume": 0.8,
+          "effectiveVolume": 0.8,
+          "muted": false,
+          "group": "unmanaged",
+          "sinkId": 52,
+          "effectiveMuted": false
+        }
+      ],
+      "sinks": [
+        {
+          "id": 52,
+          "name": "alsa_output.example",
+          "description": "Headphones",
+          "volume": 0.8,
+          "muted": false
+        }
+      ],
+      "groups": [
+        {
+          "id": "game",
+          "name": "Game",
+          "volume": 1.0,
+          "muted": false,
+          "wheelSide": "a"
+        },
+        {
+          "id": "chat",
+          "name": "Chat",
+          "volume": 1.0,
+          "muted": false,
+          "wheelSide": "b"
+        },
+        {
+          "id": "media",
+          "name": "Media",
+          "volume": 1.0,
+          "muted": false,
+          "wheelSide": "none"
+        }
+      ],
+      "mixer": {
+        "balance": 0.0,
+        "enabled": false,
+        "inputMode": "software"
+      },
+      "settings": {
+        "startMinimized": false,
+        "closeToTray": true
+      },
+      "profiles": [],
+      "devices": [],
+      "backend": {
+        "connected": true,
+        "name": "PulseAudio / PipeWire-Pulse",
+        "error": null
+      }
+    }
+  },
+  "streams.list": {
+    "params": {},
+    "result": "Stream[]"
+  },
+  "stream.set": {
+    "params": {
+      "id": 12,
+      "volume": "optional number 0..1, base gain not attenuated",
+      "muted": "optional boolean",
+      "group": "optional game|chat|media|unmanaged",
+      "sinkId": "optional numeric sink id"
+    },
+    "result": "full state"
+  },
+  "group.set": {
+    "params": {
+      "id": "game|chat|media",
+      "volume": "optional number 0..1",
+      "muted": "optional bool",
+      "wheelSide": "optional a|b|none"
+    },
+    "result": "full state"
+  },
+  "chatmix.set": {
+    "params": {
+      "balance": "optional software balance -1..1; positive favors b/chat; physical gains come from physical.sample, never scalar inversion",
+      "enabled": "optional boolean; hardware mode requires an acquired fresh connected sample",
+      "inputMode": "optional software|hardware; never starts hardware acquisition"
+    },
+    "result": "full state"
+  },
+  "settings.get": {
+    "params": {},
+    "result": {
+      "startMinimized": false,
+      "closeToTray": true
+    }
+  },
+  "settings.set": {
+    "params": {
+      "startMinimized": "optional boolean",
+      "closeToTray": "optional boolean"
+    },
+    "result": "settings"
+  },
+  "profiles.list": {
+    "params": {},
+    "result": [
+      {
+        "name": "Example"
+      }
+    ]
+  },
+  "profiles.save": {
+    "params": {
+      "name": "nonempty string max 80"
+    },
+    "result": "profile list"
+  },
+  "profiles.apply": {
+    "params": {
+      "name": "saved name"
+    },
+    "result": "full state; explicit user mutation"
+  },
+  "devices.list": {
+    "params": {},
+    "result": [
+      {
+        "id": "1038:227e:usb",
+        "name": "Arctis Nova 7 Gen 2",
+        "vendorId": 4152,
+        "productId": 8830,
+        "connected": true,
+        "kind": "headset",
+        "battery": null,
+        "artworkKey": "arctis-nova-7-gen-2",
+        "hardwareAcquired": false,
+        "capabilities": {
+          "battery": {
+            "supported": true,
+            "locallyValidated": false,
+            "reason": "Source-supported dedicated protocol; local hardware validation pending. Explicit acquisition required"
+          },
+          "physicalChatmix": {
+            "supported": true,
+            "locallyValidated": false,
+            "reason": "Source-supported dedicated protocol; local hardware validation pending. Explicit acquisition required"
+          }
+        }
+      }
+    ]
+  },
+  "device.set": {
+    "params": {
+      "id": "exact devices.list id; only dedicated 1038:227e interface3/ffc0:1 supported",
+      "hardwareEnabled": "optional bool: true explicitly acquires and queries status; false cancels/releases. Never persisted or auto-reconnected",
+      "sidetone": "optional integer 0..3, requires opt-in; verified by settings readback",
+      "autoOffMinutes": "optional integer 0..255, requires opt-in; sent only, no supported readback",
+      "statusRefresh": "optional bool: true queues documented status query after opt-in"
+    },
+    "result": "full state with physical; asynchronous acceptance, inspect physical.pending/error/lastCommand for completion. All parameters validated before enqueue/open; no device settings persisted. Disable cannot be combined with writes."
+  },
+  "lighting.apply": {
+    "params": {
+      "id": "exact devices.list id, includes hidraw node generation; only 1038:1642 interface 1 (Apex Pro TKL Gen 3 wired)",
+      "allowHardware": "required literal true; permission for this single Apply, not persisted",
+      "color": "required [red,green,blue], exactly three integers 0..255",
+      "brightness": "required integer 0..100; scales color, zero sends black"
+    },
+    "result": "{pending:true}: request accepted, NOT completion. Poll devices[].lighting.pending/error/lastSent; lastSent {color:[r,g,b],brightness:N} is populated only after successful feature sends, never readback. Partial send is not success. History is cleared on disconnect/service restart.",
+    "policy": "No automatic acquisition, startup/reconnect/profile replay, effects, queries or on-board save. Each Apply uses an independent one-shot worker (HID open/ioctl cannot stall the headset/audio service), opens exactly one matching interface, holds a node-level advisory lock, sends 643-byte 0x4b init then 643-byte 0x40 direct feature reports, closes without destructor writes. Other RGB programs must be closed. USB reconnect restores on-board lighting. Source-derived from OpenRGB 19112cdeff94086fa994c4a9cf45ec5786a599bf, physical RGB validation pending. 1628 experimental implementation/gate is intentionally not used. Safe mode rejects before enumeration/open and cancels any remaining report boundaries of an in-flight request. No blocking join on service shutdown. Headset/audio owners untouched."
+  },
+  "physical": {
+    "location": "state.get.result.physical; selected devices entry also has physical",
+    "fields": "deviceId, hardwareEnabled, hardwareAcquired, connected (wireless tri-state), battery, charging, sample {gamePercent,chatPercent,balance,receivedAtMs}|null, statusAtMs|null, stale, pending, sidetone|null, autoOffMinutesSent|null, lastCommand|null, error|null",
+    "policy": "Unknown/stale sample is null, never synthetic center. Runtime explicit opt-in only; status heartbeat every 10s, freshness deadline 15s. Wireless offline/unknown, read/query error or stale status stops owner and disarms hardware mixing without restoring gains or rerouting speakers. Reacquire with hardwareEnabled:true then explicitly enable mixer again. hardwareEnabled acquisition alone never enables mixer."
+  },
+  "errors": [
+    "INVALID_REQUEST",
+    "INVALID_PARAMS",
+    "NOT_FOUND",
+    "BACKEND_UNAVAILABLE",
+    "UNSUPPORTED",
+    "IO_ERROR",
+    "BUSY",
+    "HARDWARE_UNAVAILABLE"
+  ],
+  "safety": "No construction/inventory/config-loading audio or HID mutations. Default mixer disabled and hardware unacquired every process start. User mutation arms session reapply for restarted assigned apps; group wheelSide none and unmanaged excluded from physical attenuation. Config isolated in $XDG_CONFIG_HOME/ssgg-desktop/state.json. No capture/microphone operations. HID queries/settings only after device.set hardwareEnabled:true; --safe-mode refuses acquisition and all audio/HID writes. pactl required at runtime.",
+  "notes": [
+    "IDs are u32 numbers at RPC boundary (not renderer display strings).",
+    "state.get keys are mixer/backend, not chatmix/audio.",
+    "Stream volume/muted are base intent; effectiveVolume/effectiveMuted report actual Pulse state.",
+    "Disconnect clears stale inventory and disarms reapply; user must reactivate after reconnect.",
+    "Groups are logical per-app controls, not automatically created null buses.",
+    "Device inventory is enumeration only. Only exact 1038:227e interface3/ffc0:1 is supported. Empty serial strings in enumerated IDs are preserved. Multiple Nova control receivers are refused to avoid ambiguous VID/PID driver selection.",
+    "--safe-mode denies audio/HID mutation RPC, while settings/profiles.save remain usable.",
+    "Unix daemon survives GUI disconnect; --stdio ends at stdin EOF. No automatic gain restoration on exit; saved per-stream gain tracking prevents compounding on service restart.",
+    "Bounded: 64 KiB input line; 16 pending RPCs; 8 socket clients; 1s queue expiry; 3s per pactl command; 8s aggregate cycle; 4MiB command output; 30s socket idle timeout.",
+    "pactl executable resolved by SSGG_PACTL or PATH; desktop has no compile-time Pulse dependency and adds no dependencies.",
+    "HID owner uses 50ms passive reads, bounded 1s queries, 8 queued settings batches, latest-state mailbox rather than an unbounded event queue. Audio worker ticks every 200ms independent of GUI polling; backend operation time can increase latency. Cancel is nonblocking; pending batches are dropped, an already-running bounded query can finish. Shutdown joins and releases owner.",
+    "Settings validation is atomic before acquisition/enqueue, not a transactional HID write: a later failure cannot roll back prior commands. physical.sidetone is verified readback; autoOffMinutesSent means write success only. physical.lastCommand is queued|completed|failed; physical.pending reports outstanding acquisition/settings.",
+    "devices[].connected describes receiver enumeration, physical.connected is wireless headset tri-state. physical sample/status timestamps are Unix epoch milliseconds; freshness uses monotonic time. No automatic gain restoration or speaker reroute on headset/receiver loss."
+  ]
+}

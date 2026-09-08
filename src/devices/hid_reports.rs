@@ -3,6 +3,7 @@
 //! This module provides type-safe HID command construction and validation
 //! for SteelSeries keyboards and headsets, replacing primitive byte array building.
 
+pub mod apex_gen3;
 use super::key_mapping::{KeyAddress, KeyId, KeyMapping};
 use crate::rgb::Color;
 use crate::{Error, Result};
@@ -30,6 +31,8 @@ pub const MAX_RGB_ZONES: usize = 12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum CommandCode {
+    /// Apex Gen 3 direct-mode initialization (643-byte feature report).
+    ApexGen3Initialize = 0x4b,
     /// Apply/Save settings (0x09)
     Apply = 0x09,
     /// RGB zone control (0x21)
@@ -63,6 +66,7 @@ impl fmt::Display for CommandCode {
             CommandCode::ReactiveMode => write!(f, "REACTIVE"),
             CommandCode::ColorShift => write!(f, "COLOR_SHIFT"),
             CommandCode::PerKeyRgb => write!(f, "PERKEY_RGB_EXPERIMENTAL"),
+            CommandCode::ApexGen3Initialize => write!(f, "APEX_GEN3_INIT"),
             CommandCode::Apex2023Direct => write!(f, "APEX2023_DIRECT_EXPERIMENTAL"),
             CommandCode::ActuationControl => write!(f, "ACTUATION_CTRL_EXPERIMENTAL"),
         }
@@ -83,6 +87,7 @@ impl CommandCode {
             0x26 => Some(CommandCode::ColorShift),
             0x23 | 0x2A => Some(CommandCode::PerKeyRgb),
             0x40 => Some(CommandCode::Apex2023Direct),
+            0x4b => Some(CommandCode::ApexGen3Initialize),
             0x2D => Some(CommandCode::ActuationControl),
             _ => None,
         }
@@ -931,6 +936,17 @@ impl PerKeyRgbBuilder {
         self.key_colors.is_empty()
     }
 }
+/// Commands documented for 1038:227e by HeadsetControl's steelseries_arctis_nova_7.hpp.
+/// They intentionally do not share the legacy headset or keyboard command enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Nova7Gen2Command {
+    Status,
+    AudioSettings,
+    Sidetone(u8),
+    AutoOff(u8),
+    Save,
+}
+
 /// Structured HID report builder and validator.
 #[derive(Debug)]
 pub struct HidReportBuilder {
@@ -938,6 +954,34 @@ pub struct HidReportBuilder {
 }
 
 impl HidReportBuilder {
+    /// Build a Nova 7 Gen 2 HIDAPI output report, including the zero report ID.
+    /// Status is the two-byte request used upstream; setting commands are padded
+    /// to 64 bytes INCLUDING the report ID (not the generic headset layout).
+    pub fn build_nova7_gen2(&self, command: Nova7Gen2Command, buffer: &mut [u8]) -> Result<usize> {
+        if self.device_type != HidDeviceType::Headset {
+            return Err(Error::InvalidConfig(
+                "Nova commands require headset report builder".into(),
+            ));
+        }
+        let (opcode, parameter, length) = match command {
+            Nova7Gen2Command::Status => (0xb0, None, 2),
+            Nova7Gen2Command::AudioSettings => (0x20, None, 64),
+            Nova7Gen2Command::Save => (0x09, None, 64),
+            Nova7Gen2Command::AutoOff(minutes) => (0xa3, Some(minutes), 64),
+            Nova7Gen2Command::Sidetone(level) if level <= 3 => (0x39, Some(level), 64),
+            Nova7Gen2Command::Sidetone(_) => return Err(Error::InvalidConfig("Sidetone must be 0..=3".into())),
+        };
+        if buffer.len() < length {
+            return Err(Error::InvalidConfig("Nova command buffer too short".into()));
+        }
+        buffer[..length].fill(0);
+        buffer[1] = opcode;
+        if let Some(value) = parameter {
+            buffer[2] = value;
+        }
+        Ok(length)
+    }
+
     /// Create a new report builder for the specified device type.
     pub fn new(device_type: HidDeviceType) -> Self {
         Self { device_type }

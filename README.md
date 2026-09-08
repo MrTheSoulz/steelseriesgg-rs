@@ -1,368 +1,78 @@
-# steelseriesgg-rs – SteelSeries GG for Linux
+<img src="desktop/assets/branding/ssgg.svg" width="88" alt="SSGG logo" />
 
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.97.1%20stable-orange?style=flat-square)](https://www.rust-lang.org/)
-![GitHub repo size](https://img.shields.io/github/repo-size/Ven0m0/steelseriesgg-rs)
-[![Maintainability](https://qlty.sh/gh/Ven0m0/projects/steelseriesgg-rs/maintainability.svg)](https://qlty.sh/gh/Ven0m0/projects/steelseriesgg-rs)
+# SSGG — devices and audio, without the extras
 
-Open-source [SteelSeries GG](https://steelseries.com/gg/engine) replacement for Linux. Control SteelSeries keyboards and headsets: RGB lighting, GameSense-compatible server, profiles, and (optional) audio/Sonar integration.
+A Linux desktop app for SteelSeries hardware and per-application audio. Assign music and calls to opposite sides of your headset wheel, adjust application volumes, and control lighting on supported devices.
 
-## Quickstart
+This is the [MrTheSoulz fork](https://github.com/MrTheSoulz/steelseriesgg-rs) of [Ven0m0/steelseriesgg-rs](https://github.com/Ven0m0/steelseriesgg-rs), with a Rust service and an Electron interface. **It is a beta, not an official SteelSeries product or a feature-complete replacement for Windows GG/Sonar.**
 
-```bash
-git clone https://github.com/Ven0m0/steelseriesgg-rs.git
-cd steelseriesgg-rs
-cargo build -r
-./target/release/ssgg devices
+## Install on Ubuntu
+
+**Ubuntu 24.04 or newer, amd64; PipeWire-Pulse or PulseAudio in your desktop session.**
+
+Use the `.deb` supplied with the beta build. CI packages are available in the `ssgg-ubuntu-24.04-amd64` artifact of a successful [Ubuntu desktop build](https://github.com/MrTheSoulz/steelseriesgg-rs/actions/workflows/build-linux.yml). Extract that download to get the `.deb`; do not use an artifact from a failed run as a tested release.
+
+Open the `.deb` with your package installer, or run this from the directory containing it:
+
+```sh
+sudo apt install ./ssgg-gui_0.1.1_amd64.deb
 ```
 
-To run the daemon as a user service after installing the package:
+Then open **SSGG** from Ubuntu's application launcher.
 
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now ssgg.service
-```
+The package includes Electron and the matching Rust service. Apt installs its system dependencies. **You do not need Node, npm, Rust or Google Chrome, and the installer does not ask you to reboot or log out.** It refreshes access rules for already-connected SteelSeries HID devices without resetting USB or changing audio. No background service or autostart is enabled by installation.
 
-## Features
+[Installation, upgrades and removal](docs/installation.md) · [Troubleshooting](docs/troubleshooting.md)
 
-- **RGB lighting**: static, breathing, spectrum, wave, reactive, gradient, custom per-zone, off
-- **GameSense server**: HTTP API compatible with SteelSeries GameSense
-- **Profiles**: save/load device configurations
-- **Daemon mode**: background service with animations and GameSense overlays
-- **Audio mixer** (feature `audio`): domain model, PulseAudio/PipeWire wiring planned
-- **Sonar API** (feature `sonar`): control SteelSeries Sonar via HTTP (Sonar must be running)
+### Snap status
 
-## Supported Devices
+The [strict Snap recipe](snap/README.md) is **experimental, not an install-and-use alternative to the `.deb`**. Stock desktop HID slots are missing on the tested Ubuntu configuration; Electron sandbox permission needs publisher approval, and cross-application audio authority still needs confined testing. Rebooting or adding `raw-usb` does not fix these limitations. SSGG does not silently switch to classic/devmode or disable Chromium's sandbox.
 
-### Keyboards
-- Apex Pro / Apex Pro TKL / Apex Pro TKL 2023 (PID `0x1630` - pending hardware confirmation)
-- Apex 3 / Apex 3 TKL
-- Apex 5
-- Apex 7 / Apex 7 TKL
+## Music and Discord with the headset wheel
 
-### Headsets
-- Arctis 1 / Arctis 1 Wireless
-- Arctis 5 / Arctis 7 / Arctis 7 (2019 Edition)
-- Arctis 9 / Arctis Pro / Arctis Pro Wireless
-- Arctis Nova Pro / Arctis Nova Pro Wireless
-- Arctis Nova Pro Omni (PID `0x2290` - pending hardware confirmation)
-- Arctis Nova 5 / Arctis Nova 3 / Arctis Nova 1
+1. Start music in Chrome and audio in Discord so their playback streams appear in **Mixer**.
+2. Assign Chrome to **Media** and Discord to **Chat**.
+3. Set Media's **ChatMix side** to **A**, and Chat's to **B**.
+4. Click **Use headset wheel** in Mixer. SSGG connects to the supported headset and waits for an actual wheel reading.
+5. Click **Enable ChatMix** when you want the wheel to change audio.
 
-## Installation
+There is no hidden requirement to visit Devices first. Connecting the headset does not automatically enable mixing. If mixing is already enabled, selecting the wheel immediately uses its current position; the app warns you before that action.
 
-### Prerequisites
+You can assign any available playback application to either side, or leave it **Unmanaged**. Chrome tabs cannot be separated when the browser combines them into one native audio stream.
 
-- Linux with udev
-- Rust 1.97.1 (MSRV, pinned in `rust-toolchain.toml` and enforced via `rust-version` in `Cargo.toml`)
+[Full usage guide](docs/usage.md)
 
-No extra HID development packages are required for the default source build.
+## What works in this branch
 
-### Arch package
+| Area | Implemented behavior | Limits |
+| --- | --- | --- |
+| Audio | Real playback inventory, per-application volume/mute/output, Game/Chat/Media groups and profiles | Logical playback groups, not virtual DSP buses or Windows Sonar |
+| Nova 7 Gen 2 (`1038:227e`) | Dedicated receiver/control-interface support, battery/status, physical ChatMix, sidetone and auto-off commands | Wheel center/extremes were read on hardware; settings and live application mixing have separate acceptance gates |
+| RGB | Solid color, presets, brightness and off for **Apex Pro TKL Gen 3 wired (`1038:1642`)** | Source-derived protocol with injected-transport tests; no physical RGB acceptance yet, no firmware effects or on-board saving |
+| Desktop | Original app/tray/launcher icons, single-instance window recovery, optional tray behavior, exact-model photo selection/download | GNOME needs an AppIndicator extension for a tray; the normal launcher works without one |
 
-```bash
-sudo pacman -U ssgg-*.pkg.tar.zst
-```
+The Nova 7 Gen 2 has **no supported RGB lighting controls**. Other devices in the inherited registry are not automatically certified for desktop controls. Unsupported operations remain unavailable rather than sending guessed commands. The Apex TKL 2023 experimental path is not silently enabled.
 
-What you get: `/usr/bin/ssgg`, systemd user unit, udev rules, docs.
+## Deliberately not included
 
-After install:
-```bash
-sudo usermod -aG input $USER
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-systemctl --user daemon-reload
-systemctl --user enable --now ssgg.service   # optional
-```
-For boot without login: `sudo loginctl enable-linger $USER`.
+- Accounts, promotional feeds, game capture, automatic game integrations or telemetry.
+- Claims of full GG/Sonar parity, universal SteelSeries support, virtual surround or unimplemented microphone processing.
+- Automatic hardware writes, lighting replay or mixer activation on launch/reconnect.
+- Manufacturer product photos bundled without permission. Optional photos retain their source and attribution.
 
-### Build from source
+EQ/DSP, expanded microphone controls and broader verified device coverage remain future work.
 
-```bash
-git clone https://github.com/Ven0m0/steelseriesgg-rs.git
-cd steelseriesgg-rs
-cargo build --release
-```
+## Development and protocol documentation
 
-For the optional `audio` feature on Debian/Ubuntu, install `libpulse-dev` first:
+End users should use the installer, not compile the app.
 
-```bash
-sudo apt install libpulse-dev
-```
+- [Desktop development, architecture and tests](desktop/README.md)
+- [Device registry and discovery](docs/development/devices.md)
+- [Keyboard protocol notes](docs/development/protocol-keyboard.md)
+- [Legacy GameSense API](docs/development/gamesense-api.md) — optional CLI functionality, not started by the desktop
+- [Original logo source and provenance](desktop/assets/branding/PROVENANCE.md)
+- [Snap build and confinement analysis](snap/README.md)
 
-Binary: `target/release/ssgg`.
+## License and attribution
 
-The release profile uses link-time optimization, symbol stripping, and single codegen unit for an optimized binary.
-
-### Optional Build Optimizations
-
-The project includes optional build optimizations in `.cargo/config.toml`. These are not required but can improve build times:
-
-**sccache** (compilation cache):
-```bash
-cargo install sccache
-# Then uncomment the rustc-wrapper line in .cargo/config.toml
-```
-
-**lld** (faster linker):
-```bash
-# Debian/Ubuntu
-sudo apt install lld
-
-# Fedora
-sudo dnf install lld
-
-# Arch Linux
-sudo pacman -S lld
-
-# Then uncomment the lld line in .cargo/config.toml
-```
-
-### Device permissions (udev)
-
-```bash
-sudo cp assets/99-steelseries.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-sudo usermod -aG input $USER
-```
-Log out/in to apply the group change.
-
-## Usage
-
-### List devices
-
-```bash
-ssgg devices
-```
-
-### RGB lighting
-
-Set a static color:
-```bash
-ssgg rgb --color red
-ssgg rgb --color "#ff5500"
-```
-
-Set brightness:
-```bash
-ssgg rgb --brightness 80
-```
-
-Apply effects:
-```bash
-ssgg rgb --effect breathing --color cyan
-ssgg rgb --effect spectrum
-ssgg rgb --effect wave --direction left-to-right
-```
-
-Available effects: `static`, `breathing`, `spectrum`, `wave`, `reactive`, `gradient`, `off`
-
-### Profiles
-
-Save current configuration:
-```bash
-ssgg profile save my-profile
-```
-
-Load a profile:
-```bash
-ssgg profile load my-profile
-```
-
-List profiles:
-```bash
-ssgg profile list
-```
-
-### Audio mixer (feature `audio`)
-
-View audio status:
-```bash
-ssgg audio status
-```
-
-Set volume:
-```bash
-ssgg audio volume --channel master --level 75
-```
-
-Mute/unmute:
-```bash
-ssgg audio mute --channel game
-ssgg audio unmute --channel game
-```
-
-Adjust chat mix:
-```bash
-ssgg audio chat-mix --balance 25
-```
-
-### SteelSeries Sonar (feature `sonar`)
-
-The Sonar integration provides direct control over the SteelSeries Sonar audio device through its HTTP API. Sonar must be running for these commands to work.
-
-View Sonar status:
-```bash
-ssgg sonar status
-```
-
-Discover the dynamic Sonar API port:
-```bash
-ssgg sonar discover
-```
-
-List audio devices:
-```bash
-ssgg sonar devices
-```
-
-Set volume for a channel (classic mode):
-```bash
-ssgg sonar volume master 80
-ssgg sonar volume game 100
-ssgg sonar volume chat 75
-```
-
-Get current mode:
-```bash
-ssgg sonar mode
-```
-
-Control streamer mode volumes:
-```bash
-# Set monitoring volume
-ssgg sonar streamer monitoring master 75
-ssgg sonar streamer monitoring game 80
-
-# Set streaming volume
-ssgg sonar streamer streaming master 90
-```
-
-List available configurations:
-```bash
-ssgg sonar configs
-```
-
-### GameSense server
-
-Start the GameSense HTTP server:
-```bash
-ssgg server
-```
-
-The server runs on port 27301 by default and is compatible with games that support SteelSeries GameSense.
-
-### Daemon mode
-
-Run as a background daemon with device control and GameSense server:
-```bash
-ssgg daemon
-```
-
-The daemon will run in the foreground and can be stopped gracefully with Ctrl+C or `systemctl --user stop ssgg.service` when running as a systemd service.
-
-Run as systemd user service:
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now ssgg.service
-journalctl --user -u ssgg.service -f
-```
-
-### Device diagnostics and testing
-
-View HID device logs:
-```bash
-ssgg hid-logs
-```
-
-Run device self-test:
-```bash
-ssgg test-device
-```
-
-Verify device performance metrics:
-```bash
-ssgg verify-performance
-```
-
-Run HID report fuzzing (development tool):
-```bash
-ssgg fuzz
-```
-
-## Configuration
-
-Configuration is stored in `~/.config/ssgg/config.toml`:
-
-```toml
-[gamesense]
-enabled = true
-bind = "127.0.0.1"
-port = 27301
-
-[audio]
-master_volume = 100
-game_volume = 100
-chat_volume = 100
-
-[general]
-default_profile = "default"
-debug = false
-```
-
-## Feature Flags
-
-- `audio` - Enable audio mixer with PulseAudio/PipeWire support
-- `sonar` - Enable SteelSeries Sonar API integration
-- `experimental-apex-2023` - Enable experimental Apex Pro TKL 2023 direct per-key RGB (unverified on hardware)
-
-By default, no optional features are enabled. The Arch package ships with default features only.
-
-Build with audio support:
-```bash
-cargo build --release --features audio
-```
-
-Build with all features:
-```bash
-cargo build --release --all-features
-```
-
-## Helper binaries
-
-The project includes developer and testing utilities:
-
-- `discover_actuation` - Probe actuation firmware commands (development tool)
-- `sonar_control` - SteelSeries Sonar HTTP API exerciser (requires `sonar` feature)
-
-## Dependencies
-
-| Crate | Purpose |
-|-------|---------|
-| hidapi | HID device communication (pinned =2.6.6) |
-| tokio | Async runtime |
-| axum | GameSense HTTP server |
-| reqwest | Sonar HTTP client (optional, `sonar` feature) |
-| serde / serde_json | Serialization |
-| clap | CLI argument parsing |
-| tracing / tracing-subscriber | Logging |
-| thiserror / anyhow | Error handling |
-| libpulse-binding | Audio integration (`audio` feature) |
-| sysinfo | System diagnostics |
-| tabled | Terminal table output |
-| colored | Colored terminal output |
-| indicatif | Progress indicators |
-| chrono | Timestamps for diagnostics |
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Issues and PRs are welcome. Please run `cargo fmt && cargo clippy --all-targets --locked` before submitting.
-
-## Acknowledgments
-
-- [hidapi](https://crates.io/crates/hidapi) - HID access
-- [apex-tux](https://github.com/not-jan/apex-tux) and apex7tkl_linux - keyboard inspiration
+SSGG code and its original application branding are MIT-licensed; see [LICENSE](LICENSE) and the [branding license](desktop/assets/branding/LICENSE). Upstream authors retain attribution. Electron and bundled third-party components retain their own licenses. SteelSeries names and product photography belong to their respective owners; this project is not affiliated with SteelSeries.

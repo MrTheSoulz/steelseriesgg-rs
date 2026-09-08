@@ -482,6 +482,8 @@ pub mod product_ids {
     // Arctis Nova 7 series (unverified — GG firmware names only, no protocol confirmation).
     pub const ARCTIS_NOVA_7_RX: u16 = 0x2200;
     pub const ARCTIS_NOVA_7_TX: u16 = 0x2202;
+    /// Nova 7 Gen 2 dongle; dedicated protocol, not a Gen 1 alias.
+    pub const ARCTIS_NOVA_7_GEN2: u16 = 0x227e;
     pub const ARCTIS_NOVA_7X_RX: u16 = 0x2204;
     pub const ARCTIS_NOVA_7X_TX: u16 = 0x2206;
     pub const ARCTIS_NOVA_7P_RX: u16 = 0x2208;
@@ -542,6 +544,7 @@ pub fn device_type_from_product_id(product_id: u16) -> DeviceType {
         | ARCTIS_NOVA_1
         | ARCTIS_NOVA_7_RX
         | ARCTIS_NOVA_7_TX
+        | ARCTIS_NOVA_7_GEN2
         | ARCTIS_NOVA_7X_RX
         | ARCTIS_NOVA_7X_TX
         | ARCTIS_NOVA_7P_RX
@@ -598,6 +601,7 @@ pub fn device_name_from_product_id(product_id: u16) -> &'static str {
         ARCTIS_NOVA_1 => "Arctis Nova 1",
         ARCTIS_NOVA_7_RX => "Arctis Nova 7 (RX)",
         ARCTIS_NOVA_7_TX => "Arctis Nova 7 (TX)",
+        ARCTIS_NOVA_7_GEN2 => "Arctis Nova 7 Gen 2",
         ARCTIS_NOVA_7X_RX => "Arctis Nova 7X (RX)",
         ARCTIS_NOVA_7X_TX => "Arctis Nova 7X (TX)",
         ARCTIS_NOVA_7P_RX => "Arctis Nova 7P (RX)",
@@ -618,6 +622,8 @@ pub fn zone_count_for_product_id(product_id: u16) -> usize {
 
     match product_id {
         APEX_3 => 10,
+        // Gen 2 has status/mute indicators, not configurable RGB zones.
+        ARCTIS_NOVA_7_GEN2 => 0,
         APEX_3_TKL => 9,
         APEX_PRO_TKL_2023 | APEX_PRO_TKL_2023_WIRELESS | APEX_PRO_TKL_2023_WIRELESS_2 => 9,
         // Zone counts for these models are unverified — 1 is a safe default until captured.

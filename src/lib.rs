@@ -1,20 +1,21 @@
-//! # SteelSeries GG for Linux
+//! # SSGG for Linux
 //!
-//! A complete open-source replacement for SteelSeries GG on Linux.
+//! Rust device support and the local service behind the SSGG Electron desktop.
+//! The desktop controls native playback streams and logical audio groups; it is
+//! not a Windows Sonar replacement or a virtual DSP bus implementation.
 //!
-//! ## Features
+//! Device operations are capability-gated. Dedicated Nova 7 Gen 2 support and
+//! source-derived Apex Pro TKL Gen 3 lighting are separate from the broader
+//! inherited registry. A registry entry alone does not certify every control.
 //!
-//! - **Device Control**: RGB lighting and more for SteelSeries devices
-//! - **Audio Mixer**: Multi-channel audio mixing (Game, Chat, Media, Aux, Mic)
-//! - **GameSense**: HTTP API server for game integration and reactive lighting
-//! - **Profiles**: Save and load device configurations
-//!
-//! ## Supported Devices
-//!
-//! - Keyboards: Apex Pro, Apex 3 TKL, and more
-//! - Headsets: Arctis Nova Pro, Arctis 7/9, and more
+//! Legacy CLI, RGB and GameSense modules remain available independently. The
+//! desktop does not start a GameSense server or enable hardware automatically.
+//! See the repository's installation, usage and protocol guides for evidence
+//! tiers and current limitations.
 
 pub mod config;
+#[cfg(unix)]
+pub mod desktop;
 pub mod device_state;
 pub mod devices;
 pub mod diagnostics_export;
