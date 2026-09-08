@@ -1,6 +1,6 @@
 # SSGG desktop
 
-Local Electron + React + TypeScript console. No renderer shell, arbitrary filesystem paths, network client or production fixture fallback.
+Developer guide for the Electron + React + TypeScript console. For ordinary use, follow the [Ubuntu installation guide](../docs/installation.md) and [usage guide](../docs/usage.md). No renderer shell, arbitrary filesystem paths, network client or production fixture fallback.
 
 ## Build and launch locally
 
@@ -23,6 +23,24 @@ npm run build:local -- /absolute/path/to/ssgg-desktop
 The build stages a mode-755 binary under the private, ignored `local-bin/` directory, builds the UI/preload/main outputs, and renders `local-bin/ssgg-desktop-local.service`. No installed binaries, user configuration or services are changed. A source checkout's group-writable Cargo output is copied, not chmodded in place. These are runnable **local artifacts**, not a portable installer. The generated unit contains this checkout's absolute executable path; the portable template is `../assets/ssgg-desktop.service`.
 
 `npm start` remains a development shortcut using the default `../target/debug/ssgg-desktop` or an absolute `SSGG_SIDECAR` override. The bridge rejects group/world-writable executables. Packaged builds ignore the override and require a trusted binary in `process.resourcesPath`.
+
+## Build Ubuntu packages
+
+Build on Ubuntu 24.04 amd64 for the compatibility baseline. The desktop binary has no compile-time PulseAudio dependency; install build tools (`build-essential`, `pkg-config`, `unzip`, `binutils`, `apparmor`, `desktop-file-utils`) and the pinned Rust toolchain. Native optional audio-feature tests also require `libpulse-dev`. Headless GUI tests need `xvfb`, `xauth`, `x11-utils` and `dbus-x11`.
+
+```sh
+cd desktop
+npm ci --include=dev
+npm run package:app       # Electron + renderer + matching Rust service
+npm run package:deb       # also builds and checks release/ssgg-gui_0.1.0_amd64.deb
+npm run test:packaging
+```
+
+Packaging always extracts the checksum-verified official Electron archive, never a development `node_modules/electron/dist` tree. It checks ELF architecture/GLIBC requirements, rejects shipped symlinks, and validates the desktop entry and AppArmor syntax. The standalone output is `release/app`; unprivileged extraction cannot establish the root ownership of the DEB's sandbox helper.
+
+The Ubuntu CI job installs the DEB on a disposable runner, launches the actual packaged binary in a private session without a helper override, and purges it while checking that user data survives. Archive inspection and local extraction tests alone do not certify fresh installation, Wayland/GNOME Shell behavior or hardware access.
+
+Snap builds consume the same standalone tree; see the [Snap guide](../snap/README.md). Strict confinement's HID, browser-sandbox and cross-app audio limitations are release gates, not errors to bypass.
 
 ## Independent service (optional)
 
@@ -81,7 +99,7 @@ The actual local-launch check exercises `scripts/launch.mjs` with real Rust safe
 
 ### Chromium sandbox
 
-Never pass `--no-sandbox` or disable host security. Playwright sets `chromiumSandbox:true` explicitly. This development host has an already root-owned 4755 `/opt/google/chrome/chrome-sandbox`; the generated npm Electron helper was preserved as `chrome-sandbox.original` and a local symlink used for tests. **No machine-specific symlink is committed or included in a portable installer.** Fresh installations must use a normally provisioned distro/packaged Chromium sandbox. Headless tests select X11 explicitly for Xvfb; normal launch keeps platform defaults.
+Never pass `--no-sandbox` or disable host security. Playwright sets `chromiumSandbox:true` explicitly. An npm-installed Electron helper is not automatically root-owned. Development-only extraction checks can use an existing trusted, root-owned 4755 helper in a separate test tree, but must disclose that override in their evidence. **Never ship a machine-specific helper symlink.** The Debian builder extracts a checksum-verified pristine runtime and gives the genuine packaged helper its required ownership/mode. Installed-package CI must run without a test helper override. Headless tests select X11 explicitly for Xvfb; normal launch keeps platform defaults.
 
 ## Artwork and privacy
 
