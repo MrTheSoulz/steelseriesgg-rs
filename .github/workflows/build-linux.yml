@@ -2,7 +2,7 @@ name: Build Linux packages
 
 on:
   push:
-    branches: [feat/install-and-use, feat/ubuntu-packaging]
+    branches: [feat/install-and-use, feat/ubuntu-packaging, fix/headset-status-expiry]
   workflow_dispatch:
     inputs:
       features:
@@ -39,7 +39,8 @@ jobs:
         run: npm ci --include=dev
       - name: Unit and native safety gates
         run: |
-          cargo test --locked --test desktop_hardware --test desktop_review --test desktop_lighting
+          cargo test --locked --lib desktop::hardware::tests
+          cargo test --locked --test nova7_gen2 --test desktop_hardware --test desktop_review --test desktop_lighting
           cargo clippy --all-targets --locked -- -D warnings
           cd desktop
           npm run typecheck

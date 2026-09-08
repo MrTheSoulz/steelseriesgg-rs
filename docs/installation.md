@@ -6,11 +6,11 @@ The desktop package targets **Ubuntu 24.04 or newer on amd64**. It needs an acti
 
 Use the `.deb` supplied with the beta, or extract `ssgg-ubuntu-24.04-amd64` from a successful [Ubuntu desktop build](https://github.com/MrTheSoulz/steelseriesgg-rs/actions/workflows/build-linux.yml). GitHub may require signing in to download CI artifacts. The old CLI/Arch archive is not the Electron installer.
 
-1. Open `ssgg-gui_0.1.0_amd64.deb` with a graphical Debian package installer and choose Install.
+1. Open `ssgg-gui_0.1.1_amd64.deb` with a graphical Debian package installer and choose Install.
 2. If Ubuntu's file handler does not offer package installation, use the equivalent command:
 
    ```sh
-   sudo apt install ./ssgg-gui_0.1.0_amd64.deb
+   sudo apt install ./ssgg-gui_0.1.1_amd64.deb
    ```
 
 3. Open **SSGG** from the application launcher. Do not launch it with `sudo`.
