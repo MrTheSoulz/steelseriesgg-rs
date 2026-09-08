@@ -6,6 +6,14 @@ In Mixer, click **Use headset wheel** and wait for **Headset wheel active**. On-
 
 The bar can display wheel movement while ChatMix is off. **Enable ChatMix** only when you want it to affect audio, and assign groups to opposite sides first.
 
+## The wheel works briefly, then hardware status expires
+
+Desktop 0.1.1 fixes a Nova 7 Gen 2 polling failure reproduced during wheel movement: a wheel event could arrive without the requested status reply. The driver now repeats only the status query, at least 100 ms apart and within the original one-second deadline. It also preserves the original hardware error instead of later replacing it with a generic expiry message.
+
+Update the desktop package and fully quit/reopen SSGG; an already-running sidecar does not change when its package is upgraded. Click **Use headset wheel** again. ChatMix remains a separate opt-in.
+
+A real disconnection, invalid report, transport error or expired connection still stops hardware control. Do not disable the safety checks or increase timeouts. If the issue persists, include the exact error and build version in the report.
+
 ## No applications appear
 
 Start playback in the application and refresh. SSGG needs your user session's PipeWire-Pulse or PulseAudio server and `pactl`; the `.deb` installs the command-line client, not a replacement audio server. A paused or idle application may not have a stream. A Snap's permissions can differ from an unconfined `.deb`.

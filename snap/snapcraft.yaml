@@ -1,6 +1,6 @@
 name: ssgg
 base: core24
-version: '0.1.0'
+version: '0.1.1'
 summary: SteelSeries desktop controls for Linux
 # Keep devel until installed strict confinement and permissions are verified.
 grade: devel
