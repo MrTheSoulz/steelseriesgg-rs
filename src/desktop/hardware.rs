@@ -170,18 +170,23 @@ impl Controller {
     }
 
     pub fn snapshot(&mut self) -> Physical {
-        let stale = self
-            .shared
-            .lock()
-            .status_seen
-            .is_some_and(|t| t.elapsed() > Duration::from_secs(15));
-        if stale {
-            self.stop();
-            let mut shared = self.shared.lock();
+        let mut shared = self.shared.lock();
+        // Expire only an active acquisition, atomically with worker updates. A
+        // failed owner may retain its last status time; preserve its actual error.
+        if shared.state.hardware_enabled
+            && shared
+                .status_seen
+                .is_some_and(|t| t.elapsed() > Duration::from_secs(15))
+        {
+            if let Some(owner) = &self.owner {
+                owner.stop.store(true, Ordering::Release);
+            }
+            invalidate(&mut shared.state);
+            shared.status_seen = None;
             shared.state.stale = true;
             shared.state.error = Some("Hardware status expired; explicitly reacquire".into());
         }
-        self.shared.lock().state.clone()
+        shared.state.clone()
     }
     pub fn enable(&mut self, id: &str) -> Result<(), String> {
         if !id.starts_with("1038:227e:") {
@@ -366,6 +371,103 @@ impl Drop for Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct ScriptedTransport {
+        reports: std::collections::VecDeque<crate::Result<Vec<u8>>>,
+        writes: Arc<Mutex<Vec<Vec<u8>>>>,
+    }
+    impl Transport for ScriptedTransport {
+        fn write(&mut self, data: &[u8]) -> crate::Result<usize> {
+            self.writes.lock().push(data.to_vec());
+            Ok(data.len())
+        }
+        fn read_timeout(&mut self, data: &mut [u8], _: i32) -> crate::Result<usize> {
+            let report = self.reports.pop_front().expect("unexpected HID read")?;
+            data[..report.len()].copy_from_slice(&report);
+            Ok(report.len())
+        }
+    }
+
+    #[test]
+    fn expired_snapshot_preserves_original_hid_failure() {
+        assert_failure_survives_expiry(
+            Err(crate::Error::DeviceCommunication("injected unplug".into())),
+            "Device communication error: injected unplug",
+        );
+    }
+
+    #[test]
+    fn expired_snapshot_preserves_offline_failure() {
+        assert_failure_survives_expiry(
+            Ok(vec![0xb0, 2, 73, 0, 100, 100]),
+            "Headset offline or power unknown; explicitly reacquire",
+        );
+    }
+
+    #[test]
+    fn expired_snapshot_preserves_malformed_report_failure() {
+        assert_failure_survives_expiry(
+            Ok(vec![0x45, 101, 70]),
+            "Device communication error: Nova 7 Gen 2: percentage outside 0..=100",
+        );
+    }
+
+    fn assert_failure_survives_expiry(failure: crate::Result<Vec<u8>>, expected: &str) {
+        let failure = Mutex::new(Some(failure));
+        let writes = Arc::new(Mutex::new(Vec::new()));
+        let recorded = writes.clone();
+        let mut controller = Controller::with_factory(move |_| {
+            assert!(recorded.lock().is_empty(), "must not automatically reacquire");
+            Ok(Box::new(
+                Nova7Gen2::new(
+                    crate::devices::DeviceInfo {
+                        name: "Nova7 fixture".into(),
+                        device_type: crate::devices::DeviceType::Headset,
+                        vendor_id: 0x1038,
+                        product_id: 0x227e,
+                        interface_number: 3,
+                        usage_page: 0xffc0,
+                        usage: 1,
+                        serial_number: Some("test".into()),
+                        manufacturer: None,
+                        path: "injected".into(),
+                    },
+                    ScriptedTransport {
+                        reports: [Ok(vec![0xb0, 3, 73, 3, 40, 70]), failure.lock().take().unwrap()].into(),
+                        writes: recorded.clone(),
+                    },
+                )
+                .unwrap(),
+            ))
+        });
+        controller.enable("1038:227e:test").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !controller.owner.as_ref().unwrap().join.is_finished() {
+            assert!(Instant::now() < deadline, "HID worker did not finish");
+            thread::sleep(Duration::from_millis(1));
+        }
+        let original = controller.snapshot();
+        assert_eq!(original.error.as_deref(), Some(expected));
+        assert!(original.status_at_ms.is_some(), "a status must precede the failure");
+        controller.shared.lock().status_seen = Some(Instant::now() - Duration::from_secs(16));
+        for _ in 0..2 {
+            let state = controller.snapshot();
+            assert_eq!(state.error, original.error, "expiry must not mask the HID failure");
+            assert_eq!(state.last_command.as_deref(), Some("failed"));
+            assert!(!state.hardware_enabled);
+            assert!(!state.hardware_acquired);
+            assert!(!state.pending);
+            assert!(state.stale);
+            assert!(state.sample.is_none());
+            assert!(!controller.audio_write_guard()());
+            assert!(controller.queue("1038:227e:test", SettingsCommand::default()).is_err());
+        }
+        assert_eq!(
+            *writes.lock(),
+            vec![vec![0x00, 0xb0]],
+            "no settings or reacquisition writes"
+        );
+    }
+
     #[test]
     fn completion_after_cancel_does_not_republish_pending() {
         let shared = Mutex::new(Shared {
@@ -378,9 +480,23 @@ mod tests {
     #[test]
     fn fresh_wheel_cannot_refresh_expired_connection() {
         let mut controller = Controller::with_factory(|_| panic!("must not open"));
+        let stop = Arc::new(AtomicBool::new(false));
+        let cancelled = stop.clone();
+        let (commands, _rx) = mpsc::sync_channel(1);
+        controller.owner = Some(Owner {
+            stop: stop.clone(),
+            join: thread::spawn(move || {
+                while !cancelled.load(Ordering::Acquire) {
+                    thread::sleep(Duration::from_millis(1));
+                }
+            }),
+            commands,
+        });
         {
             let mut shared = controller.shared.lock();
             shared.state.hardware_enabled = true;
+            shared.state.hardware_acquired = true;
+            shared.state.pending = true;
             shared.state.connected = Some(true);
             shared.status_seen = Some(Instant::now() - Duration::from_secs(16));
             shared.state.status_at_ms = Some(now_ms());
@@ -397,6 +513,35 @@ mod tests {
         assert!(state.sample.is_none());
         assert!(state.stale);
         assert!(!state.hardware_enabled);
+        assert!(!state.hardware_acquired);
+        assert!(!state.pending);
         assert!(state.connected.is_none());
+        assert_eq!(
+            state.error.as_deref(),
+            Some("Hardware status expired; explicitly reacquire")
+        );
+        assert!(stop.load(Ordering::Acquire), "expired owner must be cancelled");
+        assert!(!controller.audio_write_guard()());
+        assert_eq!(controller.snapshot().error, state.error);
+        accept(
+            &controller.shared,
+            Report::Status(Status {
+                battery_percent: Some(73),
+                connected: Some(true),
+                charging: Some(false),
+                chatmix: ChatMixSample {
+                    game_percent: 40,
+                    chat_percent: 70,
+                },
+                raw_power: 3,
+                raw_charge: 3,
+            }),
+        )
+        .unwrap();
+        assert!(
+            controller.snapshot().sample.is_none(),
+            "late reports must not restore gains"
+        );
+        assert!(!controller.audio_write_guard()());
     }
 }
